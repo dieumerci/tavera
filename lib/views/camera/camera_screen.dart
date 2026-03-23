@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../controllers/auth_controller.dart';
 import '../../controllers/camera_controller.dart';
@@ -197,9 +198,14 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
         children: [
           // ── Camera preview ──────────────────────────────────────────
           cameraAsync.when(
-            data: (cam) => cam.isReady
-                ? _CameraPreviewFill(controller: cam.controller!)
-                : _CameraPlaceholder(message: cam.error ?? 'Camera unavailable'),
+            data: (cam) {
+              if (cam.isPermissionDenied) {
+                return const _CameraPermissionScreen();
+              }
+              return cam.isReady
+                  ? _CameraPreviewFill(controller: cam.controller!)
+                  : _CameraPlaceholder(message: cam.error ?? 'Camera unavailable');
+            },
             loading: () => const _CameraPlaceholder(message: null),
             error: (e, _) => _CameraPlaceholder(message: e.toString()),
           ),
@@ -367,6 +373,77 @@ class _CameraPlaceholder extends StatelessWidget {
                   Text(message!, style: AppTextStyles.bodyMedium),
                 ],
               ),
+      ),
+    );
+  }
+}
+
+// Shown when camera permission has been denied. Explains why we need it
+// and deep-links to the OS Settings page so the user can enable it without
+// having to find the app manually.
+class _CameraPermissionScreen extends ConsumerWidget {
+  const _CameraPermissionScreen();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Container(
+      color: Colors.black,
+      padding: const EdgeInsets.symmetric(horizontal: 36),
+      child: SafeArea(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: AppColors.accent.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.camera_alt_outlined,
+                color: AppColors.accent,
+                size: 40,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'Camera access needed',
+              style: AppTextStyles.titleLarge.copyWith(color: Colors.white),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Tavera uses your camera to identify food and estimate calories. '
+              'We never store video — only the photo you choose to log.',
+              style: AppTextStyles.bodyMedium.copyWith(
+                color: Colors.white60,
+                height: 1.5,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 36),
+            ElevatedButton.icon(
+              onPressed: () async {
+                // openAppSettings() deep-links to this app's iOS/Android
+                // settings page where the user can toggle camera access.
+                await openAppSettings();
+              },
+              icon: const Icon(Icons.settings_outlined, size: 18),
+              label: const Text('Open Settings'),
+            ),
+            const SizedBox(height: 14),
+            TextButton(
+              onPressed: () =>
+                  ref.invalidate(cameraControllerProvider),
+              child: Text(
+                'I\'ve enabled it — try again',
+                style: AppTextStyles.bodyMedium.copyWith(
+                  color: AppColors.accent,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

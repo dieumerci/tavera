@@ -52,8 +52,9 @@ class AuthController extends AsyncNotifier<void> {
   Future<String?> signUpWithEmail(
     String email,
     String password,
-    String name,
-  ) async {
+    String name, {
+    int calorieGoal = 2000,
+  }) async {
     state = const AsyncLoading();
     try {
       final response = await Supabase.instance.client.auth.signUp(
@@ -68,6 +69,7 @@ class AuthController extends AsyncNotifier<void> {
           'id': response.user!.id,
           'email': email,
           'name': name,
+          'calorie_goal': calorieGoal,
           'onboarding_completed': true,
         });
         state = const AsyncData(null);

@@ -2,8 +2,9 @@ import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:permission_handler/permission_handler.dart';
 
-enum CameraStatus { initialising, ready, capturing, error }
+enum CameraStatus { initialising, ready, capturing, permissionDenied, error }
 
 class CameraStateModel {
   final CameraStatus status;
@@ -18,6 +19,7 @@ class CameraStateModel {
 
   bool get isReady => status == CameraStatus.ready && controller != null;
   bool get isCapturing => status == CameraStatus.capturing;
+  bool get isPermissionDenied => status == CameraStatus.permissionDenied;
 }
 
 class TaveraCameraController
@@ -32,11 +34,22 @@ class TaveraCameraController
 
   Future<CameraStateModel> _initialise() async {
     try {
+      // Check permission before touching the camera API.
+      // On first launch this shows the system dialog; on subsequent launches
+      // it reads the cached status without any UI.
+      final status = await Permission.camera.request();
+
+      if (status.isPermanentlyDenied || status.isDenied) {
+        return const CameraStateModel(
+          status: CameraStatus.permissionDenied,
+        );
+      }
+
       final cameras = await availableCameras();
       if (cameras.isEmpty) {
         return const CameraStateModel(
           status: CameraStatus.error,
-          error: 'No camera available',
+          error: 'No camera found on this device',
         );
       }
 
@@ -59,6 +72,12 @@ class TaveraCameraController
         controller: controller,
       );
     } on CameraException catch (e) {
+      // The camera plugin also throws CameraException when permission is
+      // denied on some Android versions — normalise to permissionDenied.
+      if (e.code == 'cameraPermission' ||
+          (e.description?.toLowerCase().contains('permission') ?? false)) {
+        return const CameraStateModel(status: CameraStatus.permissionDenied);
+      }
       return CameraStateModel(
         status: CameraStatus.error,
         error: e.description ?? 'Camera initialisation failed',
