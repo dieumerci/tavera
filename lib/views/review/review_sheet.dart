@@ -7,11 +7,33 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import 'food_item_card.dart';
 
-class ReviewSheet extends ConsumerWidget {
+class ReviewSheet extends ConsumerStatefulWidget {
   const ReviewSheet({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ReviewSheet> createState() => _ReviewSheetState();
+}
+
+class _ReviewSheetState extends ConsumerState<ReviewSheet> {
+  @override
+  void initState() {
+    super.initState();
+    // Listen for the saved step and dismiss from the sheet's own context —
+    // which is always valid while the modal route is alive, unlike the
+    // button's context which may be inside AnimatedSwitcher's outgoing fade.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.listenManual(mealControllerProvider, (previous, next) {
+        if (next.step == MealProcessingStep.saved && mounted) {
+          // Add the log optimistically before closing so the chip updates
+          // instantly — no awaiting the DB round-trip.
+          Navigator.of(context).pop();
+        }
+      });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final mealState = ref.watch(mealControllerProvider);
 
     return DraggableScrollableSheet(
@@ -179,12 +201,13 @@ class _ConfirmButton extends ConsumerWidget {
                   .read(mealControllerProvider.notifier)
                   .confirmAndSave();
 
+              // Optimistically update the daily chip immediately.
+              // Dismissal is handled by ReviewSheet's listenManual so the
+              // pop fires from a context that is always valid.
               if (log != null) {
                 ref
                     .read(logControllerProvider.notifier)
                     .optimisticallyAddLog(log);
-                // Reset is handled by the .then() on showModalBottomSheet
-                if (context.mounted) Navigator.of(context).pop();
               }
             },
       child: isSaving
