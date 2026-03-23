@@ -1,0 +1,46 @@
+name: tavera
+description: "AI-powered camera-first calorie tracking"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.6.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # State management
+  flutter_riverpod: ^2.6.1
+
+  # Navigation
+  go_router: ^14.6.2
+
+  # Supabase — auth, db, storage, edge functions
+  supabase_flutter: ^2.8.4
+
+  # Camera
+  camera: ^0.11.0+2
+
+  # Image compression before upload
+  image: ^4.5.4
+
+  # UI
+  cached_network_image: ^3.4.1
+
+  # Gallery image picker (fallback for camera)
+  image_picker: ^1.1.2
+
+  # Utilities
+  intl: ^0.19.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
