@@ -16,28 +16,28 @@ class ReviewSheet extends ConsumerStatefulWidget {
 }
 
 class _ReviewSheetState extends ConsumerState<ReviewSheet> {
-  @override
-  void initState() {
-    super.initState();
-    // Listen for the saved step and dismiss from the sheet's own context —
-    // which is always valid while the modal route is alive, unlike the
-    // button's context which may be inside AnimatedSwitcher's outgoing fade.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.listenManual(mealControllerProvider, (previous, next) {
-        if (next.step == MealProcessingStep.saved && mounted) {
-          // Refresh the log list from the DB — this is the only safe place
-          // to do it because _ReviewSheetState owns the modal route and is
-          // guaranteed to still be mounted here, unlike _ConfirmButton which
-          // gets disposed the moment Navigator.pop() is called.
-          ref.read(logControllerProvider.notifier).refresh();
-          Navigator.of(context).pop();
-        }
-      });
-    });
-  }
+  // Tracks whether we've already scheduled a pop so the listener can't
+  // fire twice if Riverpod emits the saved state more than once.
+  bool _popScheduled = false;
 
   @override
   Widget build(BuildContext context) {
+    // ref.listen() in build() is auto-scoped to the widget lifecycle —
+    // no manual ProviderSubscription management needed. Never use
+    // listenManual() without storing and closing the returned subscription.
+    ref.listen<MealState>(mealControllerProvider, (_, next) {
+      if (next.step == MealProcessingStep.saved && !_popScheduled) {
+        _popScheduled = true;
+        // Refresh the log list from DB before popping so the camera chip
+        // and history screen both update as soon as the sheet closes.
+        ref.read(logControllerProvider.notifier).refresh();
+        // addPostFrameCallback defers the pop so it never runs mid-build.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) Navigator.of(context).pop();
+        });
+      }
+    });
+
     final mealState = ref.watch(mealControllerProvider);
 
     return DraggableScrollableSheet(

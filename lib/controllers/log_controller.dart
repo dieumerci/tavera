@@ -37,16 +37,20 @@ class LogController extends AsyncNotifier<DailyLogState> {
     final userId = client.auth.currentUser?.id;
     if (userId == null) return const DailyLogState();
 
+    // Build the filter using the user's LOCAL midnight boundaries,
+    // converted to UTC before sending to Postgres. Without this,
+    // DateTime.toIso8601String() produces a timezone-less string that
+    // Postgres treats as UTC — which shifts "today" for non-UTC users.
     final now = DateTime.now();
-    final startOfDay = DateTime(now.year, now.month, now.day);
-    final endOfDay = startOfDay.add(const Duration(days: 1));
+    final startOfLocalDay = DateTime(now.year, now.month, now.day);
+    final endOfLocalDay = startOfLocalDay.add(const Duration(days: 1));
 
     final response = await client
         .from('meal_logs')
         .select()
         .eq('user_id', userId)
-        .gte('logged_at', startOfDay.toIso8601String())
-        .lt('logged_at', endOfDay.toIso8601String())
+        .gte('logged_at', startOfLocalDay.toUtc().toIso8601String())
+        .lt('logged_at', endOfLocalDay.toUtc().toIso8601String())
         .order('logged_at', ascending: false);
 
     final logs = (response as List<dynamic>)
