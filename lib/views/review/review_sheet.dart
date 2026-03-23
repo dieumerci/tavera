@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../controllers/log_controller.dart';
 import '../../controllers/meal_controller.dart';
+
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import 'food_item_card.dart';
@@ -24,8 +25,11 @@ class _ReviewSheetState extends ConsumerState<ReviewSheet> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.listenManual(mealControllerProvider, (previous, next) {
         if (next.step == MealProcessingStep.saved && mounted) {
-          // Add the log optimistically before closing so the chip updates
-          // instantly — no awaiting the DB round-trip.
+          // Refresh the log list from the DB — this is the only safe place
+          // to do it because _ReviewSheetState owns the modal route and is
+          // guaranteed to still be mounted here, unlike _ConfirmButton which
+          // gets disposed the moment Navigator.pop() is called.
+          ref.read(logControllerProvider.notifier).refresh();
           Navigator.of(context).pop();
         }
       });
@@ -196,19 +200,10 @@ class _ConfirmButton extends ConsumerWidget {
     return ElevatedButton(
       onPressed: isSaving
           ? null
-          : () async {
-              final log = await ref
-                  .read(mealControllerProvider.notifier)
-                  .confirmAndSave();
-
-              // Optimistically update the daily chip immediately.
-              // Dismissal is handled by ReviewSheet's listenManual so the
-              // pop fires from a context that is always valid.
-              if (log != null) {
-                ref
-                    .read(logControllerProvider.notifier)
-                    .optimisticallyAddLog(log);
-              }
+          : () {
+              // Fire and forget — ReviewSheet.listenManual handles the
+              // refresh and pop once the state reaches `saved`.
+              ref.read(mealControllerProvider.notifier).confirmAndSave();
             },
       child: isSaving
           ? Row(

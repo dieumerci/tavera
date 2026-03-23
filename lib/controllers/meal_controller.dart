@@ -58,7 +58,11 @@ class MealState {
       step == MealProcessingStep.uploading ||
       step == MealProcessingStep.analysing;
 
-  bool get isReady => step == MealProcessingStep.review;
+  // Review content should stay visible during saving so the "Saving…"
+  // button spinner is shown rather than flashing an empty dark sheet.
+  bool get isReady =>
+      step == MealProcessingStep.review ||
+      step == MealProcessingStep.saving;
 
   /// Human-readable label for the current processing step.
   String get stepLabel => switch (step) {
