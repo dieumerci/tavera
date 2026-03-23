@@ -323,9 +323,9 @@ These are the next concrete engineering tasks before beta:
 2. ✅ **Gallery import** — `image_picker` fallback button left of the shutter; same paywall gate and AI pipeline as camera capture
 3. ✅ **Portion slider** — inline on each `FoodItemCard`, 0.5× to 3× in 0.5× steps, real-time calorie preview, commits to controller on drag-end
 4. ✅ **Success animation** — calorie chip scale-bounce (elastic spring) when meal is saved
-5. **Camera permission dialog** — graceful explanation dialog before requesting camera access
-6. **Calorie target onboarding** — collect daily calorie goal (or compute from basic stats) during sign-up
-7. **Environment variables** — move Supabase keys from `app_config.dart` to `--dart-define` build flags before any public build
+5. ✅ **Camera permission dialog** — branded explanation screen + "Open Settings" deep-link; "try again" re-runs check without restart
+6. ✅ **Calorie target onboarding** — goal-picker step after sign-up (preset chips + fine-tune slider 1200–4000 kcal); editable in Profile
+7. ✅ **Environment variables** — `Env` class reads `--dart-define` at compile time with dev fallbacks; `AppConfig` delegates to `Env`
 
 ---
 

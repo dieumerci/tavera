@@ -210,6 +210,14 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
             error: (e, _) => _CameraPlaceholder(message: e.toString()),
           ),
 
+          // ── Viewfinder plate guide ───────────────────────────────────
+          // Subtle circle hints where to frame the meal. Hidden during
+          // processing so it doesn't compete with the overlay spinner.
+          if (!isProcessing)
+            Positioned.fill(
+              child: CustomPaint(painter: _PlateGuidePainter()),
+            ),
+
           // ── Capture flash overlay ────────────────────────────────────
           AnimatedBuilder(
             animation: _flashAnim,
@@ -376,6 +384,51 @@ class _CameraPlaceholder extends StatelessWidget {
       ),
     );
   }
+}
+
+// ─── Viewfinder guide ──────────────────────────────────────────────────────────
+
+class _PlateGuidePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Centre the circle in the upper 60 % of the screen — below the top
+    // controls and above the shutter button.
+    final cx = size.width / 2;
+    final cy = size.height * 0.42;
+    final radius = size.width * 0.38;
+
+    final paint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.18)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+
+    // Outer ring
+    canvas.drawCircle(Offset(cx, cy), radius, paint);
+
+    // Four small corner ticks at N / E / S / W for a crosshair feel
+    final tickPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.55)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round;
+
+    const tickLen = 14.0;
+    // North
+    canvas.drawLine(
+        Offset(cx, cy - radius + 2), Offset(cx, cy - radius + tickLen), tickPaint);
+    // South
+    canvas.drawLine(
+        Offset(cx, cy + radius - 2), Offset(cx, cy + radius - tickLen), tickPaint);
+    // West
+    canvas.drawLine(
+        Offset(cx - radius + 2, cy), Offset(cx - radius + tickLen, cy), tickPaint);
+    // East
+    canvas.drawLine(
+        Offset(cx + radius - 2, cy), Offset(cx + radius - tickLen, cy), tickPaint);
+  }
+
+  @override
+  bool shouldRepaint(_PlateGuidePainter old) => false;
 }
 
 // Shown when camera permission has been denied. Explains why we need it

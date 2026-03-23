@@ -1,9 +1,11 @@
+import 'env.dart';
+
 class AppConfig {
   AppConfig._();
 
-  static const supabaseUrl = 'https://hdtuezlbabsebkoucjhp.supabase.co';
-  static const supabaseAnonKey =
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhkdHVlemxiYWJzZWJrb3VjamhwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyNzQ3MDksImV4cCI6MjA4OTg1MDcwOX0.6i2WwozUbjWGsRDRUKuNWiJetH13zu7-7VIW9WEYZJ4';
+  // Delegate to Env so all secret reads go through the dart-define layer.
+  static String get supabaseUrl => Env.supabaseUrl;
+  static String get supabaseAnonKey => Env.supabaseAnonKey;
 
   // Free tier enforcement
   static const freeDailyLogLimit = 3;

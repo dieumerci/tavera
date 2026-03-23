@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../controllers/auth_controller.dart';
+import '../../controllers/log_controller.dart';
 import '../../core/config/app_config.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
@@ -92,9 +94,14 @@ class ProfileScreen extends ConsumerWidget {
             icon: Icons.local_fire_department_outlined,
             label: 'Daily calorie goal',
             value: '${profile?.calorieGoal ?? 2000} kcal',
-            onTap: () {
-              // TODO: goal editor sheet
-            },
+            onTap: () => showModalBottomSheet<void>(
+              context: context,
+              isScrollControlled: true,
+              backgroundColor: Colors.transparent,
+              builder: (_) => _GoalEditorSheet(
+                currentGoal: profile?.calorieGoal ?? 2000,
+              ),
+            ),
           ),
 
           const SizedBox(height: 24),
@@ -226,6 +233,173 @@ class _Tile extends StatelessWidget {
             const SizedBox(width: 6),
             const Icon(Icons.chevron_right_rounded,
                 color: AppColors.textSecondary, size: 18),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Goal editor sheet ───────────────────────────────────────────────────────
+
+class _GoalEditorSheet extends ConsumerStatefulWidget {
+  final int currentGoal;
+  const _GoalEditorSheet({required this.currentGoal});
+
+  @override
+  ConsumerState<_GoalEditorSheet> createState() => _GoalEditorSheetState();
+}
+
+class _GoalEditorSheetState extends ConsumerState<_GoalEditorSheet> {
+  late int _goal;
+  bool _saving = false;
+
+  static const _presets = [1500, 1800, 2000, 2500, 3000];
+
+  @override
+  void initState() {
+    super.initState();
+    _goal = widget.currentGoal;
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session != null) {
+        await Supabase.instance.client
+            .from('profiles')
+            .update({'calorie_goal': _goal})
+            .eq('id', session.user.id);
+        // Refresh profile and today's log chip so changes are immediate.
+        ref.invalidate(userProfileProvider);
+        ref.read(logControllerProvider.notifier).refresh();
+      }
+      if (mounted) Navigator.of(context).pop();
+    } catch (_) {
+      // show nothing — non-fatal, user can try again
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(24, 12, 24, 36),
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text('Daily calorie goal', style: AppTextStyles.titleMedium),
+            const SizedBox(height: 6),
+            Text(
+              'Tap a preset or drag the slider to fine-tune.',
+              style: AppTextStyles.caption
+                  .copyWith(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 20),
+
+            // Presets
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: _presets.map((p) {
+                final selected = p == _goal;
+                return GestureDetector(
+                  onTap: () => setState(() => _goal = p),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 160),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 18, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? AppColors.accent
+                          : AppColors.card,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: selected
+                            ? AppColors.accent
+                            : AppColors.border,
+                      ),
+                    ),
+                    child: Text(
+                      '$p kcal',
+                      style: AppTextStyles.labelLarge.copyWith(
+                        color: selected
+                            ? AppColors.background
+                            : AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+
+            const SizedBox(height: 20),
+
+            // Fine-tune slider
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Fine-tune', style: AppTextStyles.caption),
+                Text(
+                  '$_goal kcal / day',
+                  style: AppTextStyles.labelLarge
+                      .copyWith(color: AppColors.accent),
+                ),
+              ],
+            ),
+            SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                trackHeight: 3,
+                thumbShape:
+                    const RoundSliderThumbShape(enabledThumbRadius: 7),
+                activeTrackColor: AppColors.accent,
+                inactiveTrackColor: AppColors.border,
+                thumbColor: AppColors.accent,
+                overlayColor: AppColors.accent.withValues(alpha: 0.15),
+              ),
+              child: Slider(
+                value: _goal.toDouble(),
+                min: 1200,
+                max: 4000,
+                divisions: 56,
+                onChanged: (v) => setState(() => _goal = v.round()),
+              ),
+            ),
+
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: _saving ? null : _save,
+              child: _saving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppColors.background,
+                      ),
+                    )
+                  : const Text('Save'),
+            ),
           ],
         ),
       ),
