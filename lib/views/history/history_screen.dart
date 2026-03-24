@@ -7,6 +7,7 @@ import '../../controllers/auth_controller.dart';
 import '../../controllers/log_controller.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
+import '../../models/food_item.dart';
 import '../../models/meal_log.dart';
 
 class HistoryScreen extends ConsumerStatefulWidget {
@@ -419,6 +420,15 @@ class _MealCard extends ConsumerWidget {
         false;
   }
 
+  void _openDetail(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _MealDetailSheet(log: log, selectedDate: selectedDate),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final timeLabel = DateFormat.jm().format(log.loggedAt);
@@ -440,7 +450,9 @@ class _MealCard extends ConsumerWidget {
         child: const Icon(Icons.delete_outline_rounded,
             color: AppColors.danger, size: 22),
       ),
-      child: Container(
+      child: GestureDetector(
+        onTap: () => _openDetail(context),
+        child: Container(
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
@@ -495,6 +507,277 @@ class _MealCard extends ConsumerWidget {
             ),
           ],
         ),
+      ),
+      ),
+    );
+  }
+}
+
+// ─── Meal detail sheet ────────────────────────────────────────────────────────
+
+class _MealDetailSheet extends ConsumerWidget {
+  final MealLog log;
+  final DateTime selectedDate;
+  const _MealDetailSheet({required this.log, required this.selectedDate});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final timeLabel = DateFormat('EEE, MMM d · h:mm a').format(log.loggedAt);
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.72,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      snap: true,
+      snapSizes: const [0.72, 0.95],
+      builder: (context, scrollController) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              // Handle
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.only(top: 12, bottom: 4),
+                child: Center(
+                  child: Container(
+                    width: 36, height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.border,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+              ),
+
+              Expanded(
+                child: ListView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+                  children: [
+                    // Meal photo
+                    if (log.imageUrl != null)
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(14),
+                        child: AspectRatio(
+                          aspectRatio: 4 / 3,
+                          child: Image.network(
+                            log.imageUrl!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) =>
+                                Container(
+                                  color: AppColors.card,
+                                  child: const Icon(
+                                    Icons.restaurant_outlined,
+                                    color: AppColors.textSecondary,
+                                    size: 40,
+                                  ),
+                                ),
+                          ),
+                        ),
+                      ),
+
+                    const SizedBox(height: 16),
+
+                    // Timestamp + calorie headline
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(timeLabel, style: AppTextStyles.caption),
+                        RichText(
+                          text: TextSpan(
+                            children: [
+                              TextSpan(
+                                text: '${log.totalCalories}',
+                                style: AppTextStyles.titleMedium
+                                    .copyWith(color: AppColors.accent),
+                              ),
+                              TextSpan(
+                                text: ' kcal',
+                                style: AppTextStyles.caption,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // Macro chips
+                    if (log.totalProtein != null ||
+                        log.totalCarbs != null ||
+                        log.totalFat != null)
+                      Row(
+                        children: [
+                          if (log.totalProtein != null)
+                            _MacroChip(
+                              label: 'Protein',
+                              value: log.totalProtein!,
+                              color: const Color(0xFF4ECDC4),
+                            ),
+                          if (log.totalCarbs != null) ...[
+                            const SizedBox(width: 8),
+                            _MacroChip(
+                              label: 'Carbs',
+                              value: log.totalCarbs!,
+                              color: const Color(0xFFFFD166),
+                            ),
+                          ],
+                          if (log.totalFat != null) ...[
+                            const SizedBox(width: 8),
+                            _MacroChip(
+                              label: 'Fat',
+                              value: log.totalFat!,
+                              color: const Color(0xFFFF6B6B),
+                            ),
+                          ],
+                        ],
+                      ),
+
+                    const SizedBox(height: 20),
+
+                    Text('Items', style: AppTextStyles.titleMedium),
+                    const SizedBox(height: 10),
+
+                    // Food item rows
+                    ...log.items.map((item) => _DetailItemRow(item: item)),
+
+                    const SizedBox(height: 24),
+
+                    // Delete button
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            backgroundColor: AppColors.surface,
+                            title: Text('Delete meal?',
+                                style: AppTextStyles.titleMedium),
+                            content: Text('This can\'t be undone.',
+                                style: AppTextStyles.bodyMedium),
+                            actions: [
+                              TextButton(
+                                onPressed: () =>
+                                    Navigator.of(ctx).pop(false),
+                                child: const Text('Cancel'),
+                              ),
+                              TextButton(
+                                onPressed: () =>
+                                    Navigator.of(ctx).pop(true),
+                                child: Text('Delete',
+                                    style: TextStyle(
+                                        color: AppColors.danger)),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirmed == true && context.mounted) {
+                          Navigator.of(context).pop(); // close sheet
+                          await deleteMealLog(ref, log.id, log.loggedAt);
+                        }
+                      },
+                      icon: const Icon(Icons.delete_outline_rounded,
+                          size: 18, color: AppColors.danger),
+                      label: Text(
+                        'Delete meal',
+                        style: AppTextStyles.bodyMedium
+                            .copyWith(color: AppColors.danger),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(
+                            color: AppColors.danger.withValues(alpha: 0.4)),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _MacroChip extends StatelessWidget {
+  final String label;
+  final double value;
+  final Color color;
+  const _MacroChip(
+      {required this.label, required this.value, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        '${value.toStringAsFixed(1)}g $label',
+        style: AppTextStyles.caption
+            .copyWith(color: color, fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+}
+
+class _DetailItemRow extends StatelessWidget {
+  final FoodItem item;
+  const _DetailItemRow({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    // Confidence → dot colour (amber as inline constant — AppColors has no warning)
+    final dotColor = item.confidenceScore >= 0.8
+        ? AppColors.success
+        : item.confidenceScore >= 0.5
+            ? const Color(0xFFFFD166)
+            : AppColors.danger;
+
+    final portionLabel =
+        '${item.portionSize.toStringAsFixed(item.portionSize == item.portionSize.roundToDouble() ? 0 : 1)} ${item.portionUnit}';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          // Confidence dot
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: dotColor,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(item.name, style: AppTextStyles.labelLarge),
+                Text(portionLabel, style: AppTextStyles.caption),
+              ],
+            ),
+          ),
+          Text(
+            '${item.calories} kcal',
+            style: AppTextStyles.bodyMedium
+                .copyWith(color: AppColors.accent),
+          ),
+        ],
       ),
     );
   }

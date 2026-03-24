@@ -4,7 +4,16 @@ import 'package:camera/camera.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-enum CameraStatus { initialising, ready, capturing, permissionDenied, error }
+enum CameraStatus {
+  initialising,
+  ready,
+  capturing,
+  /// Never been asked yet — show branded rationale, then trigger OS dialog.
+  permissionNeedsExplanation,
+  /// User explicitly denied (or permanently denied) — link to Settings.
+  permissionDenied,
+  error,
+}
 
 class CameraStateModel {
   final CameraStatus status;
@@ -17,9 +26,13 @@ class CameraStateModel {
     this.error,
   });
 
-  bool get isReady => status == CameraStatus.ready && controller != null;
+  bool get isReady    => status == CameraStatus.ready && controller != null;
   bool get isCapturing => status == CameraStatus.capturing;
-  bool get isPermissionDenied => status == CameraStatus.permissionDenied;
+  bool get isPermissionDenied =>
+      status == CameraStatus.permissionDenied ||
+      status == CameraStatus.permissionNeedsExplanation;
+  bool get needsExplanation =>
+      status == CameraStatus.permissionNeedsExplanation;
 }
 
 class TaveraCameraController
@@ -34,15 +47,20 @@ class TaveraCameraController
 
   Future<CameraStateModel> _initialise() async {
     try {
-      // Check permission before touching the camera API.
-      // On first launch this shows the system dialog; on subsequent launches
-      // it reads the cached status without any UI.
-      final status = await Permission.camera.request();
+      // Check the CURRENT permission status without triggering the OS dialog.
+      // If not yet granted, return permissionNeedsExplanation so the camera
+      // screen shows our branded rationale first. The OS dialog is only
+      // shown after the user taps "Allow Camera" in that rationale screen.
+      final currentStatus = await Permission.camera.status;
 
-      if (status.isPermanentlyDenied || status.isDenied) {
+      if (currentStatus.isPermanentlyDenied) {
+        return const CameraStateModel(status: CameraStatus.permissionDenied);
+      }
+
+      if (!currentStatus.isGranted) {
+        // isDenied == not yet asked (iOS) or denied-but-can-ask-again (Android).
         return const CameraStateModel(
-          status: CameraStatus.permissionDenied,
-        );
+            status: CameraStatus.permissionNeedsExplanation);
       }
 
       final cameras = await availableCameras();
@@ -123,6 +141,18 @@ class TaveraCameraController
         ),
       );
       return null;
+    }
+  }
+
+  /// Called from the rationale screen's "Allow Camera" button.
+  /// Triggers the OS permission dialog; reinitialises the camera if granted.
+  Future<void> requestPermission() async {
+    final result = await Permission.camera.request();
+    if (result.isGranted) {
+      await reinitialise();
+    } else {
+      state = const AsyncData(
+          CameraStateModel(status: CameraStatus.permissionDenied));
     }
   }
 

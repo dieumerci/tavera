@@ -1,5 +1,7 @@
 enum SubscriptionTier { free, premium }
 
+enum Sex { male, female, other }
+
 class UserProfile {
   final String id;
   final String? email;
@@ -9,6 +11,12 @@ class UserProfile {
   final SubscriptionTier tier;
   final bool onboardingCompleted;
 
+  // Body stats — all optional; used for BMR-based goal suggestions.
+  final double? weightKg;
+  final int? heightCm;
+  final int? age;
+  final Sex? sex;
+
   const UserProfile({
     required this.id,
     this.email,
@@ -17,9 +25,31 @@ class UserProfile {
     this.calorieGoal = 2000,
     this.tier = SubscriptionTier.free,
     this.onboardingCompleted = false,
+    this.weightKg,
+    this.heightCm,
+    this.age,
+    this.sex,
   });
 
   bool get isPremium => tier == SubscriptionTier.premium;
+
+  /// Whether enough body stats have been entered to compute a BMR estimate.
+  bool get canComputeBmr =>
+      weightKg != null && heightCm != null && age != null && sex != null;
+
+  /// Mifflin-St Jeor BMR × sedentary activity factor (1.2).
+  /// Returns null when any required stat is missing.
+  int? get suggestedCalorieGoal {
+    if (!canComputeBmr) return null;
+    final w = weightKg!;
+    final h = heightCm!.toDouble();
+    final a = age!.toDouble();
+    final bmr = sex == Sex.female
+        ? 10 * w + 6.25 * h - 5 * a - 161
+        : 10 * w + 6.25 * h - 5 * a + 5;
+    // Default to sedentary (×1.2) — user can pick higher in the goal editor.
+    return (bmr * 1.2).round();
+  }
 
   factory UserProfile.fromMap(Map<String, dynamic> map) => UserProfile(
         id: map['id'] as String,
@@ -31,7 +61,17 @@ class UserProfile {
           (e) => e.name == (map['subscription_tier'] ?? 'free'),
           orElse: () => SubscriptionTier.free,
         ),
-        onboardingCompleted: (map['onboarding_completed'] as bool?) ?? false,
+        onboardingCompleted:
+            (map['onboarding_completed'] as bool?) ?? false,
+        weightKg: (map['weight_kg'] as num?)?.toDouble(),
+        heightCm: map['height_cm'] as int?,
+        age: map['age'] as int?,
+        sex: map['sex'] == null
+            ? null
+            : Sex.values.firstWhere(
+                (e) => e.name == map['sex'],
+                orElse: () => Sex.other,
+              ),
       );
 
   Map<String, dynamic> toMap() => {
@@ -42,6 +82,10 @@ class UserProfile {
         'calorie_goal': calorieGoal,
         'subscription_tier': tier.name,
         'onboarding_completed': onboardingCompleted,
+        'weight_kg': weightKg,
+        'height_cm': heightCm,
+        'age': age,
+        'sex': sex?.name,
       };
 
   UserProfile copyWith({
@@ -50,6 +94,10 @@ class UserProfile {
     int? calorieGoal,
     SubscriptionTier? tier,
     bool? onboardingCompleted,
+    double? weightKg,
+    int? heightCm,
+    int? age,
+    Sex? sex,
   }) =>
       UserProfile(
         id: id,
@@ -59,5 +107,9 @@ class UserProfile {
         calorieGoal: calorieGoal ?? this.calorieGoal,
         tier: tier ?? this.tier,
         onboardingCompleted: onboardingCompleted ?? this.onboardingCompleted,
+        weightKg: weightKg ?? this.weightKg,
+        heightCm: heightCm ?? this.heightCm,
+        age: age ?? this.age,
+        sex: sex ?? this.sex,
       );
 }

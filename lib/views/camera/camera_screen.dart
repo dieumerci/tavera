@@ -199,6 +199,9 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
           // ── Camera preview ──────────────────────────────────────────
           cameraAsync.when(
             data: (cam) {
+              if (cam.needsExplanation) {
+                return const _CameraRationaleScreen();
+              }
               if (cam.isPermissionDenied) {
                 return const _CameraPermissionScreen();
               }
@@ -429,6 +432,100 @@ class _PlateGuidePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_PlateGuidePainter old) => false;
+}
+
+// Shown on first launch BEFORE triggering the OS permission dialog.
+// Our branded rationale screen gives context, then the user's tap triggers
+// the actual system dialog — dramatically improving grant rates vs. a cold
+// OS dialog with no explanation.
+class _CameraRationaleScreen extends ConsumerWidget {
+  const _CameraRationaleScreen();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Container(
+      color: Colors.black,
+      padding: const EdgeInsets.symmetric(horizontal: 36),
+      child: SafeArea(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Animated icon container
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: AppColors.accent.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.camera_alt_rounded,
+                color: AppColors.accent,
+                size: 48,
+              ),
+            ),
+            const SizedBox(height: 28),
+            Text(
+              'tavera.',
+              style: AppTextStyles.displayLarge.copyWith(
+                color: AppColors.accent,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Point. Snap. Done.',
+              style: AppTextStyles.titleLarge.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Tavera uses your camera to instantly identify food and estimate '
+              'calories with AI. We only process the photo you choose to log — '
+              'no video is ever recorded or stored.',
+              style: AppTextStyles.bodyMedium.copyWith(
+                color: Colors.white60,
+                height: 1.6,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 40),
+            // Feature rows
+            ...[
+              (Icons.bolt_rounded, 'Instant AI recognition'),
+              (Icons.lock_outline_rounded, 'Photos processed securely'),
+              (Icons.no_photography_outlined, 'No video, ever'),
+            ].map(
+              (item) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  children: [
+                    Icon(item.$1, color: AppColors.accent, size: 18),
+                    const SizedBox(width: 12),
+                    Text(
+                      item.$2,
+                      style: AppTextStyles.bodyMedium.copyWith(
+                        color: Colors.white70,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 40),
+            ElevatedButton.icon(
+              onPressed: () => ref
+                  .read(cameraControllerProvider.notifier)
+                  .requestPermission(),
+              icon: const Icon(Icons.camera_alt_outlined, size: 18),
+              label: const Text('Allow Camera Access'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 // Shown when camera permission has been denied. Explains why we need it

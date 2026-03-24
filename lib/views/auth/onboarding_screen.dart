@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../controllers/auth_controller.dart';
@@ -97,7 +97,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               _emailCtrl.text.trim(),
               _passwordCtrl.text.trim(),
             );
-        // Sign-in succeeded — router redirect to /camera handles navigation.
+        // Navigate explicitly. The router redirect is a safety net for cold
+        // start / session expiry, but for an immediate post-login navigation
+        // we drive it directly to avoid the Dart event-loop gap between the
+        // Supabase stream event and the GoRouter refresh cycle.
+        if (mounted) context.go('/camera');
       }
     } catch (e) {
       if (mounted) setState(() => _error = _friendlyError(e.toString()));
@@ -128,7 +132,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     }
     // Invalidate so the history screen picks up the real goal immediately.
     ref.invalidate(userProfileProvider);
-    // Router redirect fires automatically because auth state has a session.
+    // Explicit navigation — same reasoning as the sign-in path above.
+    if (mounted) context.go('/camera');
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────────

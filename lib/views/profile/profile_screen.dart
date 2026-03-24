@@ -8,6 +8,7 @@ import '../../controllers/log_controller.dart';
 import '../../core/config/app_config.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
+import '../../models/user_profile.dart';
 import '../paywall/paywall_sheet.dart';
 
 class ProfileScreen extends ConsumerWidget {
@@ -103,6 +104,17 @@ class ProfileScreen extends ConsumerWidget {
               ),
             ),
           ),
+          _Tile(
+            icon: Icons.monitor_weight_outlined,
+            label: 'Body stats',
+            value: profile?.canComputeBmr == true ? 'Edit' : 'Add',
+            onTap: () => showModalBottomSheet<void>(
+              context: context,
+              isScrollControlled: true,
+              backgroundColor: Colors.transparent,
+              builder: (_) => _BodyStatsSheet(profile: profile),
+            ),
+          ),
 
           const SizedBox(height: 24),
 
@@ -146,6 +158,49 @@ class ProfileScreen extends ConsumerWidget {
           ),
 
           const SizedBox(height: 32),
+
+          // ── Danger zone ────────────────────────────────────────────
+          _SectionLabel('Account'),
+          _Tile(
+            icon: Icons.delete_outline_rounded,
+            label: 'Delete account',
+            value: '',
+            onTap: () => showDialog<void>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                backgroundColor: AppColors.surface,
+                title: Text('Delete account?',
+                    style: AppTextStyles.titleMedium),
+                content: Text(
+                  'All your meal logs and data will be permanently deleted. '
+                  'This cannot be undone.',
+                  style: AppTextStyles.bodyMedium,
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: const Text('Cancel'),
+                  ),
+                  TextButton(
+                    onPressed: () async {
+                      Navigator.of(ctx).pop();
+                      // Sign out and let the router redirect handle navigation.
+                      // Full server-side deletion happens via an edge function
+                      // in Phase 2 — for now we clear the local session.
+                      await ref
+                          .read(authControllerProvider.notifier)
+                          .signOut();
+                      if (context.mounted) context.go('/onboarding');
+                    },
+                    child: Text('Delete',
+                        style: TextStyle(color: AppColors.danger)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
 
           // ── Sign out ───────────────────────────────────────────────
           GestureDetector(
@@ -403,6 +458,292 @@ class _GoalEditorSheetState extends ConsumerState<_GoalEditorSheet> {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ─── Body stats sheet ────────────────────────────────────────────────────────
+
+class _BodyStatsSheet extends ConsumerStatefulWidget {
+  final UserProfile? profile;
+  const _BodyStatsSheet({required this.profile});
+
+  @override
+  ConsumerState<_BodyStatsSheet> createState() => _BodyStatsSheetState();
+}
+
+class _BodyStatsSheetState extends ConsumerState<_BodyStatsSheet> {
+  late final TextEditingController _weightCtrl;
+  late final TextEditingController _heightCtrl;
+  late final TextEditingController _ageCtrl;
+  Sex? _sex;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _weightCtrl = TextEditingController(
+      text: widget.profile?.weightKg?.toStringAsFixed(1) ?? '',
+    );
+    _heightCtrl = TextEditingController(
+      text: widget.profile?.heightCm?.toString() ?? '',
+    );
+    _ageCtrl = TextEditingController(
+      text: widget.profile?.age?.toString() ?? '',
+    );
+    _sex = widget.profile?.sex;
+  }
+
+  @override
+  void dispose() {
+    _weightCtrl.dispose();
+    _heightCtrl.dispose();
+    _ageCtrl.dispose();
+    super.dispose();
+  }
+
+  // Compute BMR preview from the current form values.
+  int? get _bmrPreview {
+    final w = double.tryParse(_weightCtrl.text);
+    final h = int.tryParse(_heightCtrl.text);
+    final a = int.tryParse(_ageCtrl.text);
+    if (w == null || h == null || a == null || _sex == null) return null;
+    final bmr = _sex == Sex.female
+        ? 10 * w + 6.25 * h - 5 * a - 161
+        : 10 * w + 6.25 * h - 5 * a + 5;
+    return (bmr * 1.2).round();
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session != null) {
+        await Supabase.instance.client.from('profiles').update({
+          'weight_kg': double.tryParse(_weightCtrl.text),
+          'height_cm': int.tryParse(_heightCtrl.text),
+          'age': int.tryParse(_ageCtrl.text),
+          'sex': _sex?.name,
+          // Auto-apply the BMR-based goal suggestion if available.
+          if (_bmrPreview != null) 'calorie_goal': _bmrPreview,
+        }).eq('id', session.user.id);
+        ref.invalidate(userProfileProvider);
+      }
+      if (mounted) Navigator.of(context).pop();
+    } catch (_) {
+      // Non-fatal.
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final preview = _bmrPreview;
+
+    return Padding(
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(24, 12, 24, 36),
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.border,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text('Body stats', style: AppTextStyles.titleMedium),
+              const SizedBox(height: 6),
+              Text(
+                'Used to compute a personalised calorie goal via the '
+                'Mifflin-St Jeor equation.',
+                style: AppTextStyles.caption
+                    .copyWith(color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 24),
+
+              // ── Input row: weight + height ─────────────────────────
+              Row(
+                children: [
+                  Expanded(
+                    child: _StatField(
+                      controller: _weightCtrl,
+                      label: 'Weight',
+                      suffix: 'kg',
+                      onChanged: (_) => setState(() {}),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _StatField(
+                      controller: _heightCtrl,
+                      label: 'Height',
+                      suffix: 'cm',
+                      onChanged: (_) => setState(() {}),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _StatField(
+                      controller: _ageCtrl,
+                      label: 'Age',
+                      suffix: 'yrs',
+                      onChanged: (_) => setState(() {}),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // ── Sex selection ─────────────────────────────────────
+              Text('Biological sex', style: AppTextStyles.caption),
+              const SizedBox(height: 8),
+              Row(
+                children: Sex.values.map((s) {
+                  final selected = s == _sex;
+                  return Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _sex = s),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 160),
+                        margin: EdgeInsets.only(
+                            right: s != Sex.values.last ? 8 : 0),
+                        padding: const EdgeInsets.symmetric(vertical: 11),
+                        decoration: BoxDecoration(
+                          color: selected
+                              ? AppColors.accent
+                              : AppColors.card,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: selected
+                                ? AppColors.accent
+                                : AppColors.border,
+                          ),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          s.name[0].toUpperCase() + s.name.substring(1),
+                          style: AppTextStyles.caption.copyWith(
+                            color: selected
+                                ? AppColors.background
+                                : AppColors.textPrimary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+
+              // ── BMR preview ───────────────────────────────────────
+              if (preview != null) ...[
+                const SizedBox(height: 20),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppColors.accentMuted,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.bolt_rounded,
+                          color: AppColors.accent, size: 18),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Estimated goal: $preview kcal/day '
+                          '(sedentary baseline)',
+                          style: AppTextStyles.bodyMedium.copyWith(
+                            color: AppColors.accent,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: _saving ? null : _save,
+                child: _saving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.background,
+                        ),
+                      )
+                    : const Text('Save'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StatField extends StatelessWidget {
+  final TextEditingController controller;
+  final String label;
+  final String suffix;
+  final ValueChanged<String> onChanged;
+
+  const _StatField({
+    required this.controller,
+    required this.label,
+    required this.suffix,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: AppTextStyles.caption),
+        const SizedBox(height: 4),
+        Container(
+          decoration: BoxDecoration(
+            color: AppColors.card,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: TextField(
+            controller: controller,
+            keyboardType:
+                const TextInputType.numberWithOptions(decimal: true),
+            style: AppTextStyles.bodyLarge,
+            cursorColor: AppColors.accent,
+            textAlign: TextAlign.center,
+            onChanged: onChanged,
+            decoration: InputDecoration(
+              suffixText: suffix,
+              suffixStyle: AppTextStyles.caption,
+              border: InputBorder.none,
+              contentPadding:
+                  const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
