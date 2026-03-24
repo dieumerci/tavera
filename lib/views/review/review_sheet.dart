@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../controllers/log_controller.dart';
 import '../../controllers/meal_controller.dart';
-
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
+import '../../models/food_item.dart';
+import '../../widgets/labeled_text_field.dart';
+import '../../widgets/sheet_handle.dart';
 import 'food_item_card.dart';
 
 class ReviewSheet extends ConsumerStatefulWidget {
@@ -55,19 +57,9 @@ class _ReviewSheetState extends ConsumerState<ReviewSheet> {
           child: Column(
             children: [
               // Drag handle
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.only(top: 12, bottom: 4),
-                child: Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: AppColors.border,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
+              const Padding(
+                padding: EdgeInsets.only(top: 12, bottom: 4),
+                child: SheetHandle(),
               ),
 
               // Body — animated between loading / review / error
@@ -157,6 +149,9 @@ class _ReviewContent extends ConsumerWidget {
                     ),
                   ),
                 ),
+
+              // Add a missing item manually
+              _AddItemButton(),
 
               const SizedBox(height: 8),
             ],
@@ -332,6 +327,184 @@ class _SkeletonLoaderState extends State<_SkeletonLoader>
     );
   }
 }
+
+// ─── Add item button & sheet ──────────────────────────────────────────────────
+
+// Shown at the bottom of the food-items list. Opens a form where the user
+// can type a name and a rough calorie count for something the AI missed.
+class _AddItemButton extends ConsumerWidget {
+  const _AddItemButton();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return GestureDetector(
+      onTap: () => showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => const _AddItemSheet(),
+      ),
+      child: Container(
+        margin: const EdgeInsets.only(top: 4),
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: AppColors.card,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: AppColors.border,
+            style: BorderStyle.solid,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.add_rounded,
+                color: AppColors.textSecondary, size: 18),
+            const SizedBox(width: 8),
+            Text(
+              'Add missing item',
+              style: AppTextStyles.bodyMedium.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AddItemSheet extends ConsumerStatefulWidget {
+  const _AddItemSheet();
+
+  @override
+  ConsumerState<_AddItemSheet> createState() => _AddItemSheetState();
+}
+
+class _AddItemSheetState extends ConsumerState<_AddItemSheet> {
+  final _nameCtrl = TextEditingController();
+  final _caloriesCtrl = TextEditingController();
+  String _unit = 'piece';
+
+  static const _units = ['g', 'ml', 'piece', 'cup', 'slice', 'tbsp'];
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _caloriesCtrl.dispose();
+    super.dispose();
+  }
+
+  void _add() {
+    final name = _nameCtrl.text.trim();
+    final calories = int.tryParse(_caloriesCtrl.text);
+    if (name.isEmpty || calories == null || calories <= 0) return;
+
+    ref.read(mealControllerProvider.notifier).addItem(
+          FoodItem(
+            name: name,
+            portionSize: 1,
+            portionUnit: _unit,
+            calories: calories,
+            confidenceScore: 1.0, // user-entered = highest confidence
+          ),
+        );
+    Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(24, 20, 24, 36),
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SheetHandle(),
+            const SizedBox(height: 20),
+            Text('Add missing item', style: AppTextStyles.titleMedium),
+            const SizedBox(height: 6),
+            Text(
+              'Type a name and your best calorie estimate.',
+              style:
+                  AppTextStyles.caption.copyWith(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 20),
+
+            // Name
+            LabeledTextField(
+              controller: _nameCtrl,
+              label: 'Food name',
+              hint: 'e.g. Side salad',
+            ),
+            const SizedBox(height: 12),
+
+            // Calories + unit
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: LabeledTextField(
+                    controller: _caloriesCtrl,
+                    label: 'Calories (kcal)',
+                    hint: '0',
+                    keyboardType: TextInputType.number,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Unit', style: AppTextStyles.caption),
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppColors.card,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: _unit,
+                          dropdownColor: AppColors.card,
+                          style: AppTextStyles.bodyLarge,
+                          icon: const Icon(Icons.expand_more_rounded,
+                              color: AppColors.textSecondary, size: 18),
+                          items: _units
+                              .map((u) =>
+                                  DropdownMenuItem(value: u, child: Text(u)))
+                              .toList(),
+                          onChanged: (v) {
+                            if (v != null) setState(() => _unit = v);
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: _add,
+              child: const Text('Add to meal'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 
 // ─── Step progress widget ──────────────────────────────────────────────────────
 

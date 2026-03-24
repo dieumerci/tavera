@@ -9,6 +9,8 @@ import '../../core/config/app_config.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../models/user_profile.dart';
+import '../../widgets/labeled_text_field.dart';
+import '../../widgets/sheet_handle.dart';
 import '../paywall/paywall_sheet.dart';
 
 class ProfileScreen extends ConsumerWidget {
@@ -353,15 +355,7 @@ class _GoalEditorSheetState extends ConsumerState<_GoalEditorSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(
-              child: Container(
-                width: 40, height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.border,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
+            const SheetHandle(),
             const SizedBox(height: 20),
             Text('Daily calorie goal', style: AppTextStyles.titleMedium),
             const SizedBox(height: 6),
@@ -555,16 +549,7 @@ class _BodyStatsSheetState extends ConsumerState<_BodyStatsSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppColors.border,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
+              const SheetHandle(),
               const SizedBox(height: 20),
               Text('Body stats', style: AppTextStyles.titleMedium),
               const SizedBox(height: 6),
@@ -580,28 +565,35 @@ class _BodyStatsSheetState extends ConsumerState<_BodyStatsSheet> {
               Row(
                 children: [
                   Expanded(
-                    child: _StatField(
+                    child: LabeledTextField(
                       controller: _weightCtrl,
                       label: 'Weight',
-                      suffix: 'kg',
+                      suffixText: 'kg',
+                      keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true),
+                      textAlign: TextAlign.center,
                       onChanged: (_) => setState(() {}),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: _StatField(
+                    child: LabeledTextField(
                       controller: _heightCtrl,
                       label: 'Height',
-                      suffix: 'cm',
+                      suffixText: 'cm',
+                      keyboardType: TextInputType.number,
+                      textAlign: TextAlign.center,
                       onChanged: (_) => setState(() {}),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: _StatField(
+                    child: LabeledTextField(
                       controller: _ageCtrl,
                       label: 'Age',
-                      suffix: 'yrs',
+                      suffixText: 'yrs',
+                      keyboardType: TextInputType.number,
+                      textAlign: TextAlign.center,
                       onChanged: (_) => setState(() {}),
                     ),
                   ),
@@ -696,54 +688,6 @@ class _BodyStatsSheetState extends ConsumerState<_BodyStatsSheet> {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _StatField extends StatelessWidget {
-  final TextEditingController controller;
-  final String label;
-  final String suffix;
-  final ValueChanged<String> onChanged;
-
-  const _StatField({
-    required this.controller,
-    required this.label,
-    required this.suffix,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: AppTextStyles.caption),
-        const SizedBox(height: 4),
-        Container(
-          decoration: BoxDecoration(
-            color: AppColors.card,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: TextField(
-            controller: controller,
-            keyboardType:
-                const TextInputType.numberWithOptions(decimal: true),
-            style: AppTextStyles.bodyLarge,
-            cursorColor: AppColors.accent,
-            textAlign: TextAlign.center,
-            onChanged: onChanged,
-            decoration: InputDecoration(
-              suffixText: suffix,
-              suffixStyle: AppTextStyles.caption,
-              border: InputBorder.none,
-              contentPadding:
-                  const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

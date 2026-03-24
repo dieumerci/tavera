@@ -9,6 +9,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../models/food_item.dart';
 import '../../models/meal_log.dart';
+import '../../widgets/sheet_handle.dart';
 
 class HistoryScreen extends ConsumerStatefulWidget {
   const HistoryScreen({super.key});
@@ -539,18 +540,9 @@ class _MealDetailSheet extends ConsumerWidget {
           child: Column(
             children: [
               // Handle
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.only(top: 12, bottom: 4),
-                child: Center(
-                  child: Container(
-                    width: 36, height: 4,
-                    decoration: BoxDecoration(
-                      color: AppColors.border,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
+              const Padding(
+                padding: EdgeInsets.only(top: 12, bottom: 4),
+                child: SheetHandle(),
               ),
 
               Expanded(
@@ -741,9 +733,6 @@ class _DetailItemRow extends StatelessWidget {
             ? const Color(0xFFFFD166)
             : AppColors.danger;
 
-    final portionLabel =
-        '${item.portionSize.toStringAsFixed(item.portionSize == item.portionSize.roundToDouble() ? 0 : 1)} ${item.portionUnit}';
-
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -768,7 +757,7 @@ class _DetailItemRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(item.name, style: AppTextStyles.labelLarge),
-                Text(portionLabel, style: AppTextStyles.caption),
+                Text(item.portionLabel, style: AppTextStyles.caption),
               ],
             ),
           ),

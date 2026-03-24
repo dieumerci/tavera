@@ -208,6 +208,16 @@ class MealController extends Notifier<MealState> {
     );
   }
 
+  /// Called from the review UI's "+ Add item" button.
+  /// Appends a manually entered item and recalculates the total.
+  void addItem(FoodItem item) {
+    final items = List<FoodItem>.from(state.items)..add(item);
+    state = state.copyWith(
+      items: items,
+      totalCalories: items.fold<int>(0, (s, i) => s + i.calories),
+    );
+  }
+
   /// Called from the review UI when the user removes a food item.
   void removeItem(int index) {
     final items = List<FoodItem>.from(state.items)..removeAt(index);

@@ -41,6 +41,15 @@ class FoodItem {
         'confidence': confidenceScore,
       };
 
+  /// Human-readable portion label, e.g. "150 g" or "1.5 cup".
+  /// Drops the decimal when the value is a whole number.
+  String get portionLabel {
+    final sizeStr = portionSize == portionSize.roundToDouble()
+        ? portionSize.toInt().toString()
+        : portionSize.toStringAsFixed(1);
+    return '$sizeStr $portionUnit';
+  }
+
   FoodItem copyWith({
     String? name,
     double? portionSize,

@@ -6,6 +6,8 @@ import '../../controllers/meal_controller.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../models/food_item.dart';
+import '../../widgets/labeled_text_field.dart';
+import '../../widgets/sheet_handle.dart';
 
 class FoodItemCard extends ConsumerStatefulWidget {
   final FoodItem item;
@@ -68,8 +70,9 @@ class _FoodItemCardState extends ConsumerState<FoodItemCard> {
 
   @override
   Widget build(BuildContext context) {
-    final portionLabel =
-        '${_scaledPortion.toStringAsFixed(_scaledPortion == _scaledPortion.roundToDouble() ? 0 : 1)} ${_base.portionUnit}';
+    // Use a scaled copy of the base item to get the right portionLabel.
+    final scaledItem = _base.copyWith(portionSize: _scaledPortion);
+    final portionLabel = scaledItem.portionLabel;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -268,17 +271,7 @@ class _EditItemSheetState extends ConsumerState<_EditItemSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Handle
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.border,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
+            const SheetHandle(),
             const SizedBox(height: 20),
             Text('Edit item', style: AppTextStyles.titleMedium),
             const SizedBox(height: 6),
@@ -290,10 +283,9 @@ class _EditItemSheetState extends ConsumerState<_EditItemSheet> {
             const SizedBox(height: 20),
 
             // Name
-            _EditField(
+            LabeledTextField(
               controller: _nameCtrl,
               label: 'Food name',
-              keyboardType: TextInputType.text,
             ),
             const SizedBox(height: 12),
 
@@ -301,7 +293,7 @@ class _EditItemSheetState extends ConsumerState<_EditItemSheet> {
             Row(
               children: [
                 Expanded(
-                  child: _EditField(
+                  child: LabeledTextField(
                     controller: _caloriesCtrl,
                     label: 'Calories (kcal)',
                     keyboardType: TextInputType.number,
@@ -324,47 +316,6 @@ class _EditItemSheetState extends ConsumerState<_EditItemSheet> {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _EditField extends StatelessWidget {
-  final TextEditingController controller;
-  final String label;
-  final TextInputType keyboardType;
-
-  const _EditField({
-    required this.controller,
-    required this.label,
-    required this.keyboardType,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: AppTextStyles.caption),
-        const SizedBox(height: 6),
-        Container(
-          decoration: BoxDecoration(
-            color: AppColors.card,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: TextField(
-            controller: controller,
-            keyboardType: keyboardType,
-            style: AppTextStyles.bodyLarge,
-            cursorColor: AppColors.accent,
-            decoration: const InputDecoration(
-              border: InputBorder.none,
-              contentPadding:
-                  EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

@@ -12,6 +12,8 @@ import '../../controllers/auth_controller.dart';
 import '../../controllers/camera_controller.dart';
 import '../../controllers/log_controller.dart';
 import '../../controllers/meal_controller.dart';
+import '../../models/user_profile.dart';
+import '../../widgets/sheet_handle.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../widgets/tavera_loading.dart';
@@ -297,9 +299,8 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
                     isCapturing: isCapturing,
                     pulseAnim: _pulseAnim,
                   ),
-                  // Mirror spacer keeps capture button visually centred
-                  const SizedBox(width: 36),
-                  const SizedBox(width: 40),
+                  // Water quick-add — mirrors gallery button, keeps shutter centred
+                  _WaterButton(),
                 ],
               ),
             ),
@@ -624,42 +625,215 @@ class _GlassButton extends StatelessWidget {
   }
 }
 
-class _DailyChip extends StatelessWidget {
+// Water quick-add button — tap adds 250 ml; long-press shows options menu
+// to subtract or reset. Mirrors the gallery button on the opposite side of
+// the shutter so the capture button stays perfectly centred.
+class _WaterButton extends ConsumerWidget {
+  const _WaterButton();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ml = ref.watch(waterMlProvider);
+    final hasWater = ml > 0;
+
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        ref.read(waterMlProvider.notifier).add();
+      },
+      onLongPress: () {
+        HapticFeedback.mediumImpact();
+        showModalBottomSheet<void>(
+          context: context,
+          backgroundColor: Colors.transparent,
+          // No currentMl param — sheet watches waterMlProvider directly
+          // so the displayed total stays live as the user taps +/−.
+          builder: (_) => const _WaterSheet(),
+        );
+      },
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: hasWater
+              ? const Color(0xFF29ABE2).withValues(alpha: 0.35)
+              : Colors.black.withValues(alpha: 0.45),
+          shape: BoxShape.circle,
+          border: hasWater
+              ? Border.all(
+                  color: const Color(0xFF29ABE2).withValues(alpha: 0.6),
+                  width: 1.5,
+                )
+              : null,
+        ),
+        child: const Icon(Icons.water_drop_outlined,
+            color: Colors.white, size: 18),
+      ),
+    );
+  }
+}
+
+class _WaterSheet extends ConsumerWidget {
+  const _WaterSheet();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Watch directly — updates live when the user taps +/− inside the sheet.
+    final currentMl = ref.watch(waterMlProvider);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 36),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SheetHandle(),
+          const SizedBox(height: 20),
+
+          const Icon(Icons.water_drop_rounded,
+              color: Color(0xFF29ABE2), size: 36),
+          const SizedBox(height: 12),
+
+          Text(
+            '${(currentMl / 1000).toStringAsFixed(1)}L today',
+            style: AppTextStyles.titleMedium,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Each tap adds 250 ml (one glass)',
+            style: AppTextStyles.caption.copyWith(
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    ref.read(waterMlProvider.notifier).subtract();
+                    Navigator.of(context).pop();
+                  },
+                  icon: const Icon(Icons.remove_rounded, size: 16),
+                  label: const Text('−250 ml'),
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(color: AppColors.border),
+                    foregroundColor: AppColors.textSecondary,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    ref.read(waterMlProvider.notifier).add();
+                    Navigator.of(context).pop();
+                  },
+                  icon: const Icon(Icons.add_rounded, size: 16),
+                  label: const Text('+250 ml'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+          TextButton(
+            onPressed: () {
+              ref.read(waterMlProvider.notifier).reset();
+              Navigator.of(context).pop();
+            },
+            child: Text(
+              'Reset to zero',
+              style: AppTextStyles.caption.copyWith(
+                color: AppColors.danger,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// _DailyChip — circular progress ring showing kcal vs. goal.
+// The ring completes a full 360° arc when the user hits their goal.
+// Tapping navigates to history; the ring turns red when the goal is exceeded.
+class _DailyChip extends ConsumerWidget {
   final AsyncValue<DailyLogState> logState;
-  final dynamic profile;
+  final UserProfile? profile;
   const _DailyChip({required this.logState, required this.profile});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final waterMl = ref.watch(waterMlProvider);
+
     return logState.when(
       data: (state) {
-        final isPremium = profile?.isPremium == true;
-        final limitLabel = isPremium ? '∞' : '3';
+        final goal = profile?.calorieGoal ?? 2000;
+        final progress = (state.totalCalories / goal).clamp(0.0, 1.0);
+        final exceeded = state.totalCalories > goal;
+
         return GestureDetector(
           onTap: () => context.push('/history'),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
             decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.5),
-              borderRadius: BorderRadius.circular(20),
+              color: Colors.black.withValues(alpha: 0.55),
+              borderRadius: BorderRadius.circular(24),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  '${state.totalCalories} kcal',
-                  style: AppTextStyles.labelLarge
-                      .copyWith(color: Colors.white, fontSize: 13),
+                // Circular progress arc
+                SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CustomPaint(
+                    painter: _RingPainter(
+                      progress: progress,
+                      exceeded: exceeded,
+                    ),
+                    child: Center(
+                      child: Text(
+                        '${state.logCount}',
+                        style: TextStyle(
+                          color: exceeded ? AppColors.danger : AppColors.accent,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 8),
-                  width: 1,
-                  height: 12,
-                  color: Colors.white24,
-                ),
-                Text(
-                  '${state.logCount}/$limitLabel',
-                  style: AppTextStyles.caption.copyWith(color: Colors.white60),
+                const SizedBox(width: 10),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '${state.totalCalories} kcal',
+                      style: AppTextStyles.labelLarge.copyWith(
+                        color: Colors.white,
+                        fontSize: 13,
+                      ),
+                    ),
+                    if (waterMl > 0)
+                      Text(
+                        '💧 ${(waterMl / 1000).toStringAsFixed(1)}L',
+                        style: const TextStyle(
+                          color: Colors.white54,
+                          fontSize: 10,
+                        ),
+                      ),
+                  ],
                 ),
               ],
             ),
@@ -670,6 +844,49 @@ class _DailyChip extends StatelessWidget {
       error: (_, __) => const SizedBox.shrink(),
     );
   }
+}
+
+class _RingPainter extends CustomPainter {
+  final double progress;
+  final bool exceeded;
+  const _RingPainter({required this.progress, required this.exceeded});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const strokeWidth = 3.0;
+    final centre = Offset(size.width / 2, size.height / 2);
+    final radius = (size.width - strokeWidth) / 2;
+    const startAngle = -1.5707963267948966; // -π/2 = 12 o'clock
+
+    // Background track
+    canvas.drawCircle(
+      centre,
+      radius,
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.12)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth,
+    );
+
+    if (progress <= 0) return;
+
+    // Progress arc
+    canvas.drawArc(
+      Rect.fromCircle(center: centre, radius: radius),
+      startAngle,
+      6.283185307179586 * progress, // 2π × progress
+      false,
+      Paint()
+        ..color = exceeded ? AppColors.danger : AppColors.accent
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth
+        ..strokeCap = StrokeCap.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_RingPainter old) =>
+      old.progress != progress || old.exceeded != exceeded;
 }
 
 // ─── Capture button ────────────────────────────────────────────────────────────

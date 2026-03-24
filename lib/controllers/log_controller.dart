@@ -141,6 +141,25 @@ final historyLogsProvider =
       .toList();
 });
 
+// ── Water tracking ──────────────────────────────────────────────────────────
+// Resets when the app cold-starts (daily reset). Phase 2 will persist to DB.
+
+const _waterStepMl = 250;
+
+final waterMlProvider = StateNotifierProvider<_WaterNotifier, int>(
+  (_) => _WaterNotifier(),
+);
+
+class _WaterNotifier extends StateNotifier<int> {
+  _WaterNotifier() : super(0);
+
+  void add() => state = state + _waterStepMl;
+  void subtract() {
+    if (state >= _waterStepMl) state = state - _waterStepMl;
+  }
+  void reset() => state = 0;
+}
+
 // ── Meal deletion ────────────────────────────────────────────────────────────
 
 /// Deletes a meal log by ID, then invalidates both the history cache for
