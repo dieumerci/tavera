@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "562519729615",
+    "project_id": "tavera-5498a",
+    "storage_bucket": "tavera-5498a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:562519729615:android:151906f8b81490aabc9eba",
+        "android_client_info": {
+          "package_name": "com.tavera.tavera"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBdEz1dNpDJ88CrMm0jSq6xY0RSeKvidOU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -135,11 +135,11 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 
 ### Push Notifications
 
-- [ ] Implement meal-time push notification scheduling based on user timezone
-- [ ] Default reminders at 8am (breakfast), 12:30pm (lunch), 7pm (dinner)
-- [ ] Smart suppression: do not send notification if a meal has already been logged in that window
-- [ ] Implement notification permission request during onboarding
-- [ ] Handle notification taps to deep link directly to the camera screen
+- ✅ Implement meal-time push notification scheduling based on user timezone — `NotificationService` with timezone-aware `zonedSchedule`
+- ✅ Default reminders at 8am (breakfast), 12:30pm (lunch), 7pm (dinner)
+- ✅ Smart suppression: do not send notification if a meal has already been logged in that window — `ref.listen` on `logControllerProvider` reschedules after every log change
+- ✅ Implement notification permission request — toggle in Profile → Notifications section; FCM wraps APNs on iOS
+- [ ] Handle notification taps to deep link directly to the camera screen _(app opens to camera by default; explicit deep-link routing deferred)_
 
 ### Offline Mode
 

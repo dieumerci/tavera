@@ -12,11 +12,13 @@ import '../../controllers/auth_controller.dart';
 import '../../controllers/camera_controller.dart';
 import '../../controllers/log_controller.dart';
 import '../../controllers/meal_controller.dart';
+import '../../models/meal_log.dart';
 import '../../models/user_profile.dart';
 import '../../widgets/sheet_handle.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../widgets/tavera_loading.dart';
+import '../../services/notification_service.dart';
 import '../paywall/paywall_sheet.dart';
 import '../quick_add/quick_add_sheet.dart';
 import '../review/review_sheet.dart';
@@ -98,7 +100,15 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
     super.didChangeAppLifecycleState(lifecycle);
     if (lifecycle == AppLifecycleState.resumed) {
       ref.read(cameraControllerProvider.notifier).reinitialise();
+      // Reschedule on resume — time has passed since last open, windows may
+      // have expired or the user may have logged a meal outside the app.
+      final logs = ref.read(logControllerProvider).valueOrNull?.todayLogs ?? [];
+      NotificationService.scheduleDailyReminders(logs);
     }
+  }
+
+  void _scheduleNotifications(List<MealLog> logs) {
+    NotificationService.scheduleDailyReminders(logs);
   }
 
   Future<void> _onCapture() async {
@@ -212,6 +222,13 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
     final logState = ref.watch(logControllerProvider);
     final mealState = ref.watch(mealControllerProvider);
     final profile = ref.watch(userProfileProvider).valueOrNull;
+
+    // Smart suppression: reschedule reminders whenever log state changes
+    // (new meal logged, meal deleted). No-op if notifications not permitted.
+    ref.listen<AsyncValue<DailyLogState>>(logControllerProvider, (_, next) {
+      final logs = next.valueOrNull?.todayLogs;
+      if (logs != null) _scheduleNotifications(logs);
+    });
 
     final isCapturing = cameraAsync.valueOrNull?.isCapturing ?? false;
     final isProcessing = mealState.isProcessing;

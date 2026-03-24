@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../controllers/auth_controller.dart';
 import '../../controllers/log_controller.dart';
 import '../../core/config/app_config.dart';
+import '../../services/notification_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../models/user_profile.dart';
@@ -201,6 +202,12 @@ class ProfileScreen extends ConsumerWidget {
               ),
             ),
           ),
+
+          const SizedBox(height: 16),
+
+          // ── Notifications ──────────────────────────────────────────
+          _SectionLabel('Notifications'),
+          const _NotificationTile(),
 
           const SizedBox(height: 16),
 
@@ -687,6 +694,89 @@ class _BodyStatsSheetState extends ConsumerState<_BodyStatsSheet> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ─── Notification tile ────────────────────────────────────────────────────────
+
+class _NotificationTile extends ConsumerStatefulWidget {
+  const _NotificationTile();
+
+  @override
+  ConsumerState<_NotificationTile> createState() => _NotificationTileState();
+}
+
+class _NotificationTileState extends ConsumerState<_NotificationTile> {
+  bool? _enabled; // null = loading
+
+  @override
+  void initState() {
+    super.initState();
+    NotificationService.isEnabled().then(
+      (v) { if (mounted) setState(() => _enabled = v); },
+    );
+  }
+
+  Future<void> _toggle(bool value) async {
+    if (value) {
+      final granted = await NotificationService.requestPermission();
+      if (!mounted) return;
+      setState(() => _enabled = granted);
+      if (granted) {
+        final logs =
+            ref.read(logControllerProvider).valueOrNull?.todayLogs ?? [];
+        await NotificationService.scheduleDailyReminders(logs);
+      }
+    } else {
+      await NotificationService.cancelAll();
+      if (mounted) setState(() => _enabled = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.notifications_outlined,
+              color: AppColors.textSecondary, size: 20),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Meal Reminders', style: AppTextStyles.labelLarge),
+                const SizedBox(height: 2),
+                Text(
+                  'Breakfast · Lunch · Dinner',
+                  style: AppTextStyles.caption
+                      .copyWith(color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+          if (_enabled == null)
+            const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2, color: AppColors.accent),
+            )
+          else
+            Switch(
+              value: _enabled!,
+              activeThumbColor: AppColors.accent,
+              activeTrackColor: AppColors.accentMuted,
+              onChanged: _toggle,
+            ),
+        ],
       ),
     );
   }

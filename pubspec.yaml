@@ -44,6 +44,14 @@ dependencies:
   # HTTP for Open Food Facts barcode lookup
   http: ^1.2.0
 
+  # Firebase — FCM push notifications + permission (iOS APNs wrapped by FCM)
+  firebase_core: ^3.6.0
+  firebase_messaging: ^15.1.4
+
+  # Local notification scheduling (meal-time reminders)
+  flutter_local_notifications: ^18.0.1
+  timezone: ^0.9.4
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
