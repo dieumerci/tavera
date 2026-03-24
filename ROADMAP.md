@@ -1,7 +1,7 @@
 # TAVERA — Product Roadmap & Development Checklist
 
 **Document Version:** 1.1
-**Last Updated:** March 23, 2026
+**Last Updated:** March 24, 2026
 **Status:** Phase 0 Complete · Phase 1 In Progress
 **Author:** Dee (Founder)
 
@@ -69,12 +69,12 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 ### Camera & Photo Capture
 
 - ✅ Build the camera capture screen with the `camera` package as the **home screen**
-- [ ] Implement viewfinder overlay with a subtle plate guide circle
+- ✅ Implement viewfinder overlay with a subtle plate guide circle
 - ✅ Add a capture button with haptic feedback
 - ✅ Implement gallery import fallback via `image_picker`
 - ✅ Build client-side image compression (longest side ≤ 1024px, 85% JPEG quality) — runs in a `compute` isolate to keep UI responsive
 - ✅ Add loading state: white flash on capture, full-screen overlay with step labels ("Uploading photo…" / "Identifying food…"), animated skeleton in review sheet
-- [ ] Handle camera permission requests gracefully with explanation dialogs _(currently relies on OS default)_
+- ✅ Handle camera permission requests gracefully with explanation dialogs — branded rationale screen + "Open Settings" deep-link
 
 ### AI Food Recognition Pipeline
 
@@ -94,7 +94,7 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 - ✅ Build the meal review bottom sheet showing identified items with calorie estimates
 - ✅ Implement the portion adjustment **slider** for each food item (0.5× to 3× in 0.5× steps) — inline on the card, real-time calorie preview
 - ✅ Add the ability to remove an incorrectly identified item
-- [ ] Add the ability to manually add a missing item via food search
+- ✅ Add the ability to manually add a missing item — inline in the review sheet via "+ Add missing item"
 - ✅ Implement the confirm button that writes `meal_logs` to Supabase
 - ✅ Show a success animation after confirmation — calorie chip bounces (scale pop) when sheet dismisses after a successful save
 - ✅ Calorie total updates in real time as user edits or removes items
@@ -104,12 +104,12 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 
 - ✅ Show today's total calories and logged meal count
 - ✅ Linear calorie progress bar (consumed vs. daily goal)
-- [ ] Build the daily calorie **progress ring** (circular) _(currently a linear bar)_
-- [ ] Build the macro breakdown bars (protein, carbs, fat) with targets _(premium feature)_
+- ✅ Build the daily calorie **progress ring** (circular) — `_RingPainter` CustomPainter in `_DailyChip`
+- ✅ Build the macro breakdown bars (protein, carbs, fat) with targets — in history `_SummaryCard`
 - ✅ Show today's logged meals as a scrollable list
 - [ ] Display remaining calories prominently _(partially shown in history screen)_
-- [ ] Add quick-add buttons for water logging (250ml increments)
-- [ ] Implement date navigation to view previous days
+- ✅ Add quick-add buttons for water logging (250ml increments) — `_WaterButton` in camera bottom bar
+- ✅ Implement date navigation to view previous days — chevron nav + date picker in history screen
 - ✅ Dashboard updates in real time when a new meal is confirmed (optimistic update)
 
 ### Meal History
@@ -117,21 +117,21 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 - ✅ Build the meal history screen with scrollable list of today's meals
 - ✅ Show meal photo thumbnails, food item names, calorie total, and timestamp
 - [ ] Implement lazy loading with pagination (20 meals per page)
-- [ ] Add the ability to tap a meal to view full details and edit
-- [ ] Implement meal deletion with confirmation dialog
+- ✅ Add the ability to tap a meal to view full details — `_MealDetailSheet` with photo, macros, items
+- ✅ Implement meal deletion with confirmation dialog — swipe-to-delete + delete button in detail sheet
 - ✅ Meal photos served via `cached_network_image`
 
 ### Barcode Scanning
 
-- [ ] Integrate `mobile_scanner` for barcode capture
-- [ ] Build barcode lookup against the foods table (EAN/UPC matching)
-- [ ] Fall back to Open Food Facts API for barcodes not in the local database
-- [ ] Display nutritional info and allow portion adjustment before logging
+- ✅ Integrate `mobile_scanner` for barcode capture — `BarcodeScanScreen` with scan-window overlay
+- ⏭ Build barcode lookup against the foods table _(no local foods DB yet — using Open Food Facts directly)_
+- ✅ Fall back to Open Food Facts API for barcodes not in the local database
+- ✅ Display nutritional info and allow portion adjustment before logging — portion multiplier chips (0.5×–3×)
 
 ### Manual Quick-Add
 
-- [ ] Build a simple manual entry form: meal name, estimated calories
-- [ ] Optional macro entry for users who know their numbers
+- ✅ Build a simple manual entry form: meal name, estimated calories — `QuickAddSheet`
+- ✅ Optional macro entry for users who know their numbers — collapsible macros row
 
 ### Push Notifications
 
@@ -153,8 +153,8 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 
 - ✅ Build the settings/profile screen with name, email, subscription tier display
 - ✅ Sign out flow
-- [ ] Add calorie target editor (currently hardcoded to 2000 kcal in profile model)
-- [ ] Add body stats input (height, weight, activity level) for BMR-based target calculation
+- ✅ Add calorie target editor — `_GoalEditorSheet` with preset chips + slider 1200–4000 kcal
+- ✅ Add body stats input (height, weight, age, sex) for BMR-based target calculation — Mifflin-St Jeor × 1.2
 - [ ] Implement account deletion flow (data export, then delete)
 - [ ] Add notification preference controls
 

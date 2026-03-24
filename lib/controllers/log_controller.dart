@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/config/app_config.dart';
+import '../models/food_item.dart';
 import '../models/meal_log.dart';
 import '../models/user_profile.dart';
 
@@ -158,6 +159,51 @@ class _WaterNotifier extends StateNotifier<int> {
     if (state >= _waterStepMl) state = state - _waterStepMl;
   }
   void reset() => state = 0;
+}
+
+// ── Direct log (barcode / manual quick-add) ─────────────────────────────────
+
+/// Saves a meal without the AI pipeline — used by barcode scan and quick-add.
+/// Optimistically updates the daily chip and invalidates the history cache.
+/// Returns the saved [MealLog] or null if the write fails.
+Future<MealLog?> directLogMeal(
+  WidgetRef ref, {
+  required List<FoodItem> items,
+  String? imageUrl,
+}) async {
+  final client = Supabase.instance.client;
+  final userId = client.auth.currentSession?.user.id;
+  if (userId == null || items.isEmpty) return null;
+
+  final totalCalories = items.fold<int>(0, (s, i) => s + i.calories);
+  final totalProtein  = items.fold<double>(0.0, (s, i) => s + (i.protein ?? 0));
+  final totalCarbs    = items.fold<double>(0.0, (s, i) => s + (i.carbs   ?? 0));
+  final totalFat      = items.fold<double>(0.0, (s, i) => s + (i.fat     ?? 0));
+
+  try {
+    final response = await client.from('meal_logs').insert({
+      'user_id': userId,
+      'image_url': imageUrl,
+      'items': items.map((e) => e.toMap()).toList(),
+      'total_calories': totalCalories,
+      'total_protein': totalProtein,
+      'total_carbs': totalCarbs,
+      'total_fat': totalFat,
+    }).select().single();
+
+    final log = MealLog.fromMap(response);
+
+    // Instant chip update + invalidate today's history cache.
+    ref.read(logControllerProvider.notifier).optimisticallyAddLog(log);
+    final today = DateTime.now();
+    ref.invalidate(historyLogsProvider(
+      DateTime(today.year, today.month, today.day),
+    ));
+
+    return log;
+  } catch (_) {
+    return null;
+  }
 }
 
 // ── Meal deletion ────────────────────────────────────────────────────────────

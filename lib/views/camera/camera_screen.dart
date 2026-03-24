@@ -18,6 +18,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../widgets/tavera_loading.dart';
 import '../paywall/paywall_sheet.dart';
+import '../quick_add/quick_add_sheet.dart';
 import '../review/review_sheet.dart';
 
 class CameraScreen extends ConsumerStatefulWidget {
@@ -166,6 +167,29 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
     });
   }
 
+  void _onBarcodeScan() {
+    final profile = ref.read(userProfileProvider).valueOrNull;
+    if (!ref.read(logControllerProvider.notifier).canLog(profile)) {
+      _showPaywall();
+      return;
+    }
+    context.push('/barcode');
+  }
+
+  void _onQuickAdd() {
+    final profile = ref.read(userProfileProvider).valueOrNull;
+    if (!ref.read(logControllerProvider.notifier).canLog(profile)) {
+      _showPaywall();
+      return;
+    }
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const QuickAddSheet(),
+    );
+  }
+
   void _showPaywall() {
     showModalBottomSheet<void>(
       context: context,
@@ -267,8 +291,18 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
               ),
             ),
 
-          // ── History grid button ──────────────────────────────────────
-          if (!isProcessing)
+          // ── Side buttons (barcode left, history + quick-add right) ──
+          if (!isProcessing) ...[
+            // Barcode scan — mirrors history button on the left
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 56,
+              left: 20,
+              child: _GlassButton(
+                icon: Icons.qr_code_scanner_rounded,
+                onTap: _onBarcodeScan,
+              ),
+            ),
+            // History grid
             Positioned(
               top: MediaQuery.of(context).padding.top + 56,
               right: 20,
@@ -277,6 +311,16 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
                 onTap: () => context.push('/history'),
               ),
             ),
+            // Manual quick-add — below history button
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 108,
+              right: 20,
+              child: _GlassButton(
+                icon: Icons.edit_outlined,
+                onTap: _onQuickAdd,
+              ),
+            ),
+          ],
 
           // ── Bottom bar: gallery  |  capture  |  (spacer) ────────────
           if (!isProcessing)

@@ -38,6 +38,12 @@ dependencies:
   # Permissions — camera permission flow + openAppSettings()
   permission_handler: ^11.3.1
 
+  # Barcode scanning
+  mobile_scanner: ^5.2.3
+
+  # HTTP for Open Food Facts barcode lookup
+  http: ^1.2.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

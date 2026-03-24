@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../controllers/auth_controller.dart';
 import '../../views/auth/onboarding_screen.dart';
+import '../../views/barcode/barcode_screen.dart';
 import '../../views/camera/camera_screen.dart';
 import '../../views/history/history_screen.dart';
 import '../../views/profile/profile_screen.dart';
@@ -49,6 +50,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => _fadeTransition(
           state,
           const CameraScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/barcode',
+        pageBuilder: (context, state) => _slideTransition(
+          state,
+          const BarcodeScanScreen(),
         ),
       ),
       GoRoute(
