@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../core/theme/app_colors.dart';
 import '../core/theme/app_text_styles.dart';
+import '../services/haptic_service.dart';
 
 /// Shared labeled text input used across meal editing, manual add, and body
 /// stats sheets. Consolidates the identical Container + TextField pattern
 /// that was duplicated across food_item_card.dart, review_sheet.dart, and
-/// profile_screen.dart.
-class LabeledTextField extends StatelessWidget {
+/// profile_screen.dart. Fires a light haptic on focus.
+class LabeledTextField extends StatefulWidget {
   final TextEditingController controller;
   final String label;
   final String? hint;
@@ -28,11 +29,32 @@ class LabeledTextField extends StatelessWidget {
   });
 
   @override
+  State<LabeledTextField> createState() => _LabeledTextFieldState();
+}
+
+class _LabeledTextFieldState extends State<LabeledTextField> {
+  final _focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode.addListener(() {
+      if (_focusNode.hasFocus) HapticService.selection();
+    });
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: AppTextStyles.caption),
+        Text(widget.label, style: AppTextStyles.caption),
         const SizedBox(height: 6),
         Container(
           decoration: BoxDecoration(
@@ -41,17 +63,18 @@ class LabeledTextField extends StatelessWidget {
             border: Border.all(color: AppColors.border),
           ),
           child: TextField(
-            controller: controller,
-            keyboardType: keyboardType,
-            textAlign: textAlign,
+            controller: widget.controller,
+            focusNode: _focusNode,
+            keyboardType: widget.keyboardType,
+            textAlign: widget.textAlign,
             style: AppTextStyles.bodyLarge,
             cursorColor: AppColors.accent,
-            onChanged: onChanged,
+            onChanged: widget.onChanged,
             decoration: InputDecoration(
-              hintText: hint,
+              hintText: widget.hint,
               hintStyle: AppTextStyles.bodyMedium
                   .copyWith(color: AppColors.textTertiary),
-              suffixText: suffixText,
+              suffixText: widget.suffixText,
               suffixStyle: AppTextStyles.caption,
               border: InputBorder.none,
               contentPadding: const EdgeInsets.symmetric(

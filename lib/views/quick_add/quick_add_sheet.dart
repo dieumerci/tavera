@@ -5,6 +5,7 @@ import '../../controllers/log_controller.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../models/food_item.dart';
+import '../../services/haptic_service.dart';
 import '../../widgets/labeled_text_field.dart';
 import '../../widgets/sheet_handle.dart';
 
@@ -77,6 +78,7 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
 
     if (!mounted) return;
     if (log != null) {
+      HapticService.medium();
       Navigator.of(context).pop(true);
     } else {
       setState(() {
@@ -134,7 +136,10 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
             // Optional macros (collapsed by default)
             const SizedBox(height: 12),
             GestureDetector(
-              onTap: () => setState(() => _showMacros = !_showMacros),
+              onTap: () {
+                HapticService.selection();
+                setState(() => _showMacros = !_showMacros);
+              },
               child: Row(
                 children: [
                   Text(
