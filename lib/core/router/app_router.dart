@@ -6,8 +6,11 @@ import '../../controllers/auth_controller.dart';
 import '../../views/auth/onboarding_screen.dart';
 import '../../views/barcode/barcode_screen.dart';
 import '../../views/camera/camera_screen.dart';
+import '../../views/coaching/coaching_screen.dart';
+import '../../views/dashboard/dashboard_screen.dart';
 import '../../views/history/history_screen.dart';
 import '../../views/profile/profile_screen.dart';
+import '../../views/shell/app_shell.dart';
 
 // A ChangeNotifier that fires whenever auth state changes,
 // used to trigger GoRouter redirect re-evaluation.
@@ -22,7 +25,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   final notifier = _AuthNotifier(ref);
 
   return GoRouter(
-    initialLocation: '/camera',
+    initialLocation: '/',
     refreshListenable: notifier,
     redirect: (context, state) {
       final authAsync = ref.read(authStateProvider);
@@ -34,10 +37,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final atOnboarding = state.matchedLocation == '/onboarding';
 
       if (!isAuthenticated && !atOnboarding) return '/onboarding';
-      if (isAuthenticated && atOnboarding) return '/camera';
+      if (isAuthenticated && atOnboarding) return '/';
       return null;
     },
     routes: [
+      // ── Unauthenticated ──────────────────────────────────────────────────
       GoRoute(
         path: '/onboarding',
         pageBuilder: (context, state) => _fadeTransition(
@@ -45,13 +49,64 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           const OnboardingScreen(),
         ),
       ),
+
+      // ── Main app shell (persists bottom nav across tab switches) ─────────
+      StatefulShellRoute.indexedStack(
+        builder: (context, state, navigationShell) =>
+            AppShell(navigationShell: navigationShell),
+        branches: [
+          // Tab 0 — Home / Dashboard
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/',
+                pageBuilder: (context, state) => _fadeTransition(
+                  state,
+                  const DashboardScreen(),
+                ),
+              ),
+            ],
+          ),
+
+          // Tab 1 — Nutrition / History
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/nutrition',
+                pageBuilder: (context, state) => _fadeTransition(
+                  state,
+                  const HistoryScreen(),
+                ),
+              ),
+            ],
+          ),
+
+          // Tab 2 — Profile
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/profile',
+                pageBuilder: (context, state) => _fadeTransition(
+                  state,
+                  const ProfileScreen(),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+
+      // ── Full-screen modals (no bottom nav) ───────────────────────────────
+      // Camera: accessed via the + FAB → "Take a Photo"
       GoRoute(
         path: '/camera',
-        pageBuilder: (context, state) => _fadeTransition(
+        pageBuilder: (context, state) => _slideUpTransition(
           state,
           const CameraScreen(),
         ),
       ),
+
+      // Barcode: accessed via the + FAB → "Scan Barcode"
       GoRoute(
         path: '/barcode',
         pageBuilder: (context, state) => _slideTransition(
@@ -59,23 +114,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           const BarcodeScanScreen(),
         ),
       ),
+
+      // Coaching insights (premium): push from Dashboard teaser card
       GoRoute(
-        path: '/history',
+        path: '/coaching',
         pageBuilder: (context, state) => _slideTransition(
           state,
-          const HistoryScreen(),
-        ),
-      ),
-      GoRoute(
-        path: '/profile',
-        pageBuilder: (context, state) => _slideTransition(
-          state,
-          const ProfileScreen(),
+          const CoachingScreen(),
         ),
       ),
     ],
   );
 });
+
+// ─── Transitions ──────────────────────────────────────────────────────────────
 
 CustomTransitionPage<void> _fadeTransition(GoRouterState state, Widget child) {
   return CustomTransitionPage<void>(
@@ -99,5 +151,23 @@ CustomTransitionPage<void> _slideTransition(GoRouterState state, Widget child) {
       child: FadeTransition(opacity: animation, child: child),
     ),
     transitionDuration: const Duration(milliseconds: 280),
+  );
+}
+
+// Camera slides up from the bottom as a full-screen capture modal.
+CustomTransitionPage<void> _slideUpTransition(
+    GoRouterState state, Widget child) {
+  return CustomTransitionPage<void>(
+    key: state.pageKey,
+    child: child,
+    transitionsBuilder: (_, animation, __, child) => SlideTransition(
+      position: Tween<Offset>(
+        begin: const Offset(0, 1.0),
+        end: Offset.zero,
+      ).animate(
+          CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+      child: child,
+    ),
+    transitionDuration: const Duration(milliseconds: 320),
   );
 }
