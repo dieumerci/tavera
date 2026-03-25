@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../controllers/auth_controller.dart';
 import '../../controllers/log_controller.dart';
 import '../../core/config/app_config.dart';
+import '../../services/haptic_service.dart';
 import '../../services/notification_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
@@ -142,14 +143,16 @@ class ProfileScreen extends ConsumerWidget {
 
           const SizedBox(height: 24),
 
-          // ── App section ────────────────────────────────────────────
-          _SectionLabel('App'),
+          // ── Features section ───────────────────────────────────────
+          _SectionLabel('Features'),
           _Tile(
             icon: Icons.insights_rounded,
-            label: 'Weekly insights',
+            label: 'AI Coaching',
             value: profile?.isPremium == true ? 'View' : 'Premium',
             onTap: () {
-              if (profile?.isPremium != true) {
+              if (profile?.isPremium == true) {
+                context.push('/coaching');
+              } else {
                 showModalBottomSheet<void>(
                   context: context,
                   isScrollControlled: true,
@@ -158,6 +161,29 @@ class ProfileScreen extends ConsumerWidget {
                 );
               }
             },
+          ),
+          _Tile(
+            icon: Icons.restaurant_menu_rounded,
+            label: 'Meal Planner',
+            value: profile?.isPremium == true ? 'View' : 'Premium',
+            onTap: () {
+              if (profile?.isPremium == true) {
+                context.push('/meal-planner');
+              } else {
+                showModalBottomSheet<void>(
+                  context: context,
+                  isScrollControlled: true,
+                  backgroundColor: Colors.transparent,
+                  builder: (_) => const PaywallSheet(),
+                );
+              }
+            },
+          ),
+          _Tile(
+            icon: Icons.emoji_events_rounded,
+            label: 'Challenges',
+            value: 'View',
+            onTap: () => context.push('/challenges'),
           ),
 
           const SizedBox(height: 32),
@@ -214,6 +240,7 @@ class ProfileScreen extends ConsumerWidget {
           // ── Sign out ───────────────────────────────────────────────
           GestureDetector(
             onTap: () async {
+              HapticService.medium();
               await ref.read(authControllerProvider.notifier).signOut();
               if (context.mounted) context.go('/onboarding');
             },
@@ -279,7 +306,10 @@ class _Tile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: () {
+        HapticService.selection();
+        onTap();
+      },
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -380,7 +410,10 @@ class _GoalEditorSheetState extends ConsumerState<_GoalEditorSheet> {
               children: _presets.map((p) {
                 final selected = p == _goal;
                 return GestureDetector(
-                  onTap: () => setState(() => _goal = p),
+                  onTap: () {
+                    HapticService.selection();
+                    setState(() => _goal = p);
+                  },
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 160),
                     padding: const EdgeInsets.symmetric(
@@ -616,7 +649,10 @@ class _BodyStatsSheetState extends ConsumerState<_BodyStatsSheet> {
                   final selected = s == _sex;
                   return Expanded(
                     child: GestureDetector(
-                      onTap: () => setState(() => _sex = s),
+                      onTap: () {
+                        HapticService.selection();
+                        setState(() => _sex = s);
+                      },
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 160),
                         margin: EdgeInsets.only(

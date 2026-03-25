@@ -229,6 +229,15 @@ class DashboardScreen extends ConsumerWidget {
               const SliverToBoxAdapter(child: SizedBox(height: 16)),
             ],
 
+            // ── Phase 2: Meal planner teaser ────────────────────────────────
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: const _MealPlannerTeaserCard(),
+              ),
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 16)),
+
             // ── Phase 2: Active challenge strip ─────────────────────────────
             if (activeChallenges.isNotEmpty) ...[
               SliverToBoxAdapter(
@@ -1001,6 +1010,63 @@ class _CoachingTeaserCard extends StatelessWidget {
               color: AppColors.textTertiary,
               size: 20,
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Phase 2: Meal planner teaser card ───────────────────────────────────────
+
+class _MealPlannerTeaserCard extends ConsumerWidget {
+  const _MealPlannerTeaserCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return GestureDetector(
+      onTap: () {
+        HapticService.selection();
+        context.push('/meal-planner');
+      },
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.accent.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.restaurant_menu_rounded,
+                  color: AppColors.accent, size: 22),
+            ),
+            const SizedBox(width: 14),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Meal Planner',
+                      style: AppTextStyles.labelLarge),
+                  SizedBox(height: 3),
+                  Text(
+                    'View your AI-generated plan for the week',
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded,
+                color: AppColors.textTertiary, size: 20),
           ],
         ),
       ),

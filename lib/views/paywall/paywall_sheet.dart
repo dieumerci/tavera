@@ -83,6 +83,14 @@ class PaywallSheet extends StatelessWidget {
             icon: Icons.memory_rounded,
             label: 'Meal memory & one-tap re-logging',
           ),
+          const _Feature(
+            icon: Icons.restaurant_menu_rounded,
+            label: 'AI meal planner + grocery lists',
+          ),
+          const _Feature(
+            icon: Icons.emoji_events_rounded,
+            label: 'Create social challenges',
+          ),
 
           const SizedBox(height: 28),
 
