@@ -6,6 +6,8 @@ import '../../controllers/auth_controller.dart';
 import '../../views/auth/onboarding_screen.dart';
 import '../../views/barcode/barcode_screen.dart';
 import '../../views/camera/camera_screen.dart';
+import '../../views/challenges/challenge_detail_screen.dart';
+import '../../views/challenges/challenges_screen.dart';
 import '../../views/coaching/coaching_screen.dart';
 import '../../views/dashboard/dashboard_screen.dart';
 import '../../views/history/history_screen.dart';
@@ -121,6 +123,26 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => _slideTransition(
           state,
           const CoachingScreen(),
+        ),
+      ),
+
+      // Challenges list: accessed from Profile or challenge strip
+      GoRoute(
+        path: '/challenges',
+        pageBuilder: (context, state) => _slideTransition(
+          state,
+          const ChallengesScreen(),
+        ),
+      ),
+
+      // Challenge detail: accessed from list or Dashboard strip
+      GoRoute(
+        path: '/challenges/:id',
+        pageBuilder: (context, state) => _slideTransition(
+          state,
+          ChallengeDetailScreen(
+            challengeId: state.pathParameters['id']!,
+          ),
         ),
       ),
     ],
