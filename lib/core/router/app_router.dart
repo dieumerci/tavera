@@ -8,6 +8,7 @@ import '../../views/barcode/barcode_screen.dart';
 import '../../views/camera/camera_screen.dart';
 import '../../views/challenges/challenge_detail_screen.dart';
 import '../../views/challenges/challenges_screen.dart';
+import '../../views/meal_planner/meal_planner_screen.dart';
 import '../../views/coaching/coaching_screen.dart';
 import '../../views/dashboard/dashboard_screen.dart';
 import '../../views/history/history_screen.dart';
@@ -132,6 +133,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => _slideTransition(
           state,
           const ChallengesScreen(),
+        ),
+      ),
+
+      // Meal Planner: accessed from Dashboard teaser or Profile
+      GoRoute(
+        path: '/meal-planner',
+        pageBuilder: (context, state) => _slideTransition(
+          state,
+          const MealPlannerScreen(),
         ),
       ),
 
