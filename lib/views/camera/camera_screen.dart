@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter/services.dart'; // SystemChrome / SystemUiMode
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
@@ -14,6 +14,7 @@ import '../../controllers/log_controller.dart';
 import '../../controllers/meal_controller.dart';
 import '../../models/meal_log.dart';
 import '../../models/user_profile.dart';
+import '../../services/haptic_service.dart';
 import '../../widgets/sheet_handle.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
@@ -120,7 +121,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
       return;
     }
 
-    HapticFeedback.mediumImpact();
+    HapticService.medium();
 
     // Trigger white flash immediately — tactile feedback before anything async
     _flashCtrl.forward(from: 0).then((_) => _flashCtrl.reverse());
@@ -153,7 +154,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
 
     if (picked == null || !mounted) return;
 
-    HapticFeedback.mediumImpact();
+    HapticService.medium();
     ref
         .read(mealControllerProvider.notifier)
         .analyseCapture(File(picked.path));
@@ -290,8 +291,11 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     _GlassButton(
-                      icon: Icons.person_outline_rounded,
-                      onTap: () => context.push('/profile'),
+                      icon: Icons.close_rounded,
+                      onTap: () {
+                        HapticService.selection();
+                        context.pop();
+                      },
                     ),
                     ScaleTransition(
                       scale: _chipFlashAnim,
@@ -699,11 +703,11 @@ class _WaterButton extends ConsumerWidget {
 
     return GestureDetector(
       onTap: () {
-        HapticFeedback.selectionClick();
+        HapticService.selection();
         ref.read(waterMlProvider.notifier).add();
       },
       onLongPress: () {
-        HapticFeedback.mediumImpact();
+        HapticService.medium();
         showModalBottomSheet<void>(
           context: context,
           backgroundColor: Colors.transparent,

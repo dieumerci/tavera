@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
@@ -9,6 +8,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../models/food_item.dart';
 import '../../models/meal_log.dart';
+import '../../services/haptic_service.dart';
 import '../../widgets/sheet_handle.dart';
 
 class HistoryScreen extends ConsumerStatefulWidget {
@@ -34,11 +34,15 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       _selectedDate.month == _today.month &&
       _selectedDate.day == _today.day;
 
-  void _prevDay() => setState(() =>
-      _selectedDate = _selectedDate.subtract(const Duration(days: 1)));
+  void _prevDay() {
+    HapticService.selection();
+    setState(() =>
+        _selectedDate = _selectedDate.subtract(const Duration(days: 1)));
+  }
 
   void _nextDay() {
     if (_isToday) return;
+    HapticService.selection();
     setState(
         () => _selectedDate = _selectedDate.add(const Duration(days: 1)));
   }
@@ -393,7 +397,7 @@ class _MealCard extends ConsumerWidget {
   const _MealCard({required this.log, required this.selectedDate});
 
   Future<bool> _confirmDelete(BuildContext context) async {
-    HapticFeedback.mediumImpact();
+    HapticService.medium();
     return await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
@@ -422,11 +426,12 @@ class _MealCard extends ConsumerWidget {
   }
 
   void _openDetail(BuildContext context) {
+    HapticService.selection();
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _MealDetailSheet(log: log, selectedDate: selectedDate),
+      builder: (_) => MealDetailSheet(log: log, selectedDate: selectedDate),
     );
   }
 
@@ -516,10 +521,13 @@ class _MealCard extends ConsumerWidget {
 
 // ─── Meal detail sheet ────────────────────────────────────────────────────────
 
-class _MealDetailSheet extends ConsumerWidget {
+// Public so it can be opened from the Dashboard and other screens.
+class MealDetailSheet extends ConsumerWidget {
   final MealLog log;
-  final DateTime selectedDate;
-  const _MealDetailSheet({required this.log, required this.selectedDate});
+  // Used to invalidate the correct historyLogsProvider cache on deletion.
+  // Defaults to the meal's own logged date when not specified.
+  final DateTime? selectedDate;
+  const MealDetailSheet({super.key, required this.log, this.selectedDate});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -643,6 +651,7 @@ class _MealDetailSheet extends ConsumerWidget {
                     // Delete button
                     OutlinedButton.icon(
                       onPressed: () async {
+                        HapticService.medium();
                         final confirmed = await showDialog<bool>(
                           context: context,
                           builder: (ctx) => AlertDialog(
@@ -669,7 +678,8 @@ class _MealDetailSheet extends ConsumerWidget {
                         );
                         if (confirmed == true && context.mounted) {
                           Navigator.of(context).pop(); // close sheet
-                          await deleteMealLog(ref, log.id, log.loggedAt);
+                          await deleteMealLog(
+                              ref, log.id, selectedDate ?? log.loggedAt);
                         }
                       },
                       icon: const Icon(Icons.delete_outline_rounded,

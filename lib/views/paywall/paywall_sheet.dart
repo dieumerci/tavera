@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/config/app_config.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
+import '../../services/haptic_service.dart';
 
 class PaywallSheet extends StatelessWidget {
   const PaywallSheet({super.key});
@@ -88,6 +89,7 @@ class PaywallSheet extends StatelessWidget {
           // CTA
           ElevatedButton(
             onPressed: () {
+              HapticService.heavy();
               // TODO: connect RevenueCat / StoreKit
               Navigator.of(context).pop();
             },
@@ -97,7 +99,10 @@ class PaywallSheet extends StatelessWidget {
           const SizedBox(height: 10),
 
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () {
+              HapticService.selection();
+              Navigator.of(context).pop();
+            },
             child: const Text('Not now'),
           ),
         ],

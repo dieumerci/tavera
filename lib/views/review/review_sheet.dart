@@ -6,6 +6,7 @@ import '../../controllers/meal_controller.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../models/food_item.dart';
+import '../../services/haptic_service.dart';
 import '../../widgets/labeled_text_field.dart';
 import '../../widgets/sheet_handle.dart';
 import 'food_item_card.dart';
@@ -196,8 +197,7 @@ class _ConfirmButton extends ConsumerWidget {
       onPressed: isSaving
           ? null
           : () {
-              // Fire and forget — ReviewSheet.listenManual handles the
-              // refresh and pop once the state reaches `saved`.
+              HapticService.heavy();
               ref.read(mealControllerProvider.notifier).confirmAndSave();
             },
       child: isSaving
@@ -338,12 +338,15 @@ class _AddItemButton extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return GestureDetector(
-      onTap: () => showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (_) => const _AddItemSheet(),
-      ),
+      onTap: () {
+        HapticService.selection();
+        showModalBottomSheet<void>(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (_) => const _AddItemSheet(),
+        );
+      },
       child: Container(
         margin: const EdgeInsets.only(top: 4),
         padding: const EdgeInsets.symmetric(vertical: 12),
@@ -495,7 +498,10 @@ class _AddItemSheetState extends ConsumerState<_AddItemSheet> {
             ),
             const SizedBox(height: 24),
             ElevatedButton(
-              onPressed: _add,
+              onPressed: () {
+                HapticService.medium();
+                _add();
+              },
               child: const Text('Add to meal'),
             ),
           ],
@@ -663,6 +669,7 @@ class _ErrorState extends ConsumerWidget {
 
           ElevatedButton(
             onPressed: () {
+              HapticService.medium();
               ref.read(mealControllerProvider.notifier).reset();
               Navigator.of(context).pop();
             },
@@ -671,6 +678,7 @@ class _ErrorState extends ConsumerWidget {
           const SizedBox(height: 8),
           TextButton(
             onPressed: () {
+              HapticService.selection();
               ref.read(mealControllerProvider.notifier).reset();
               Navigator.of(context).pop();
             },

@@ -1,7 +1,6 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -10,6 +9,7 @@ import '../../controllers/log_controller.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../models/food_item.dart';
+import '../../services/haptic_service.dart';
 import '../../widgets/sheet_handle.dart';
 
 // ─── Public entry-point ───────────────────────────────────────────────────────
@@ -54,7 +54,7 @@ class _BarcodeScanScreenState extends State<BarcodeScanScreen> {
     if (raw == null || raw.isEmpty) return;
 
     _handled = true;
-    HapticFeedback.mediumImpact();
+    HapticService.medium();
     await _scanner.stop();
     if (!mounted) return;
     setState(() => _ui = _ScreenState.loading);
@@ -114,7 +114,10 @@ class _BarcodeScanScreenState extends State<BarcodeScanScreen> {
             left: 16,
             child: _CircleButton(
               icon: Icons.close_rounded,
-              onTap: () => Navigator.of(context).pop(),
+              onTap: () {
+                HapticService.selection();
+                Navigator.of(context).pop();
+              },
             ),
           ),
 
@@ -389,7 +392,10 @@ class _ProductSheetState extends ConsumerState<_ProductSheet> {
               for (final mult in [0.5, 1.0, 1.5, 2.0, 3.0])
                 Expanded(
                   child: GestureDetector(
-                    onTap: () => setState(() => _multiplier = mult),
+                    onTap: () {
+                      HapticService.selection();
+                      setState(() => _multiplier = mult);
+                    },
                     child: Container(
                       margin: const EdgeInsets.symmetric(horizontal: 3),
                       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -418,7 +424,10 @@ class _ProductSheetState extends ConsumerState<_ProductSheet> {
           const SizedBox(height: 24),
 
           ElevatedButton(
-            onPressed: _saving ? null : _log,
+            onPressed: _saving ? null : () {
+              HapticService.heavy();
+              _log();
+            },
             child: _saving
                 ? const SizedBox(
                     width: 18,

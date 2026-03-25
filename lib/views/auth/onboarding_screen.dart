@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../controllers/auth_controller.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
+import '../../services/haptic_service.dart';
 
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
@@ -17,7 +18,7 @@ class OnboardingScreen extends ConsumerStatefulWidget {
 // Three logical views within the same route:
 //   auth  → sign-up / sign-in form
 //   goal  → calorie goal picker (shown after successful sign-up)
-//   (navigation to /camera is handled by the router redirect)
+//   (navigation to / is handled by context.go + router redirect)
 enum _OnboardingStep { auth, goal }
 
 class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
@@ -27,7 +28,6 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   bool _isSignUp = true;
   bool _isLoading = false;
-  String? _error;
 
   // Calorie goal step
   _OnboardingStep _step = _OnboardingStep.auth;
@@ -44,80 +44,95 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     super.dispose();
   }
 
-  // ── Auth submission ─────────────────────────────────────────────────────────
+  // ── Auth submission ──────────────────────────────────────────────────────────
 
   Future<void> _submitAuth() async {
-    if (_emailCtrl.text.trim().isEmpty || _passwordCtrl.text.trim().isEmpty) {
-      setState(() => _error = 'Please fill in all fields');
+    final email    = _emailCtrl.text.trim();
+    final password = _passwordCtrl.text.trim();
+    final name     = _nameCtrl.text.trim();
+
+    // Client-side validation
+    if (_isSignUp && name.isEmpty) {
+      await HapticService.error();
+      _showErrorDialog('Please enter your name.');
+      return;
+    }
+    if (email.isEmpty || password.isEmpty) {
+      await HapticService.error();
+      _showErrorDialog('Please fill in all fields.');
+      return;
+    }
+    if (!email.contains('@') || !email.contains('.')) {
+      await HapticService.error();
+      _showErrorDialog('Please enter a valid email address.');
+      return;
+    }
+    if (password.length < 6) {
+      await HapticService.error();
+      _showErrorDialog('Password must be at least 6 characters.');
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
+    await HapticService.medium();
+    setState(() => _isLoading = true);
 
     try {
       if (_isSignUp) {
         final pendingEmail = await ref
             .read(authControllerProvider.notifier)
             .signUpWithEmail(
-              _emailCtrl.text.trim(),
-              _passwordCtrl.text.trim(),
-              _nameCtrl.text.trim(),
-              // Pass a temporary default; the goal step will upsert the real
-              // value immediately after before the router redirect fires.
+              email,
+              password,
+              name,
               calorieGoal: _calorieGoal,
             );
 
-        if (pendingEmail != null && mounted) {
-          // Email confirmation required — tell the user.
-          setState(() {
-            _isLoading = false;
-            _error =
-                'Check your inbox at $pendingEmail and confirm your email, '
-                'then sign in below.';
-            _isSignUp = false;
-          });
+        if (!mounted) return;
+
+        if (pendingEmail != null) {
+          // Email confirmation required
+          setState(() => _isLoading = false);
+          _showInfoDialog(
+            'Check your inbox',
+            'A confirmation link was sent to $pendingEmail. '
+            'Open it and then sign in below.',
+            onDismiss: () => setState(() => _isSignUp = false),
+          );
           return;
         }
 
-        // Sign-up succeeded and session is live — show the goal picker
-        // before the router redirect fires so the user can personalise
-        // their target. The redirect is still registered; it fires after
-        // setState() when the router re-evaluates.
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-            _step = _OnboardingStep.goal;
-          });
-        }
+        // Sign-up succeeded and session is live — show goal picker
+        setState(() {
+          _isLoading = false;
+          _step = _OnboardingStep.goal;
+        });
       } else {
         await ref.read(authControllerProvider.notifier).signInWithEmail(
-              _emailCtrl.text.trim(),
-              _passwordCtrl.text.trim(),
+              email,
+              password,
             );
-        // Navigate explicitly. The router redirect is a safety net for cold
-        // start / session expiry, but for an immediate post-login navigation
-        // we drive it directly to avoid the Dart event-loop gap between the
-        // Supabase stream event and the GoRouter refresh cycle.
-        if (mounted) context.go('/camera');
+        if (!mounted) return;
+        await HapticService.success();
+        // Navigate to dashboard (/) — GoRouter redirect is a safety net,
+        // but we drive explicitly to avoid the async stream gap.
+        if (!mounted) return;
+        context.go('/');
       }
     } catch (e) {
-      if (mounted) setState(() => _error = _friendlyError(e.toString()));
+      if (!mounted) return;
+      await HapticService.error();
+      _showErrorDialog(_friendlyError(e.toString()));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // ── Goal submission ─────────────────────────────────────────────────────────
+  // ── Goal submission ──────────────────────────────────────────────────────────
 
   Future<void> _submitGoal() async {
+    await HapticService.heavy();
     setState(() => _isLoading = true);
     try {
-      // Session is guaranteed at this point — sign-up already succeeded.
-      // Update the profile row directly via the Supabase client; no need
-      // to go through AuthController for a simple profile field update.
       final session = Supabase.instance.client.auth.currentSession;
       if (session != null) {
         await Supabase.instance.client
@@ -130,22 +145,84 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
-    // Invalidate so the history screen picks up the real goal immediately.
     ref.invalidate(userProfileProvider);
-    // Explicit navigation — same reasoning as the sign-in path above.
-    if (mounted) context.go('/camera');
+    await HapticService.success();
+    if (mounted) context.go('/');
   }
 
-  // ── Helpers ─────────────────────────────────────────────────────────────────
+  // ── Error / info dialogs ─────────────────────────────────────────────────────
+
+  void _showErrorDialog(String message) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Oops', style: AppTextStyles.titleMedium),
+        content: Text(message, style: AppTextStyles.bodyMedium.copyWith(height: 1.5)),
+        actions: [
+          TextButton(
+            onPressed: () {
+              HapticService.selection();
+              Navigator.of(ctx).pop();
+            },
+            child: Text(
+              'OK',
+              style: AppTextStyles.labelLarge.copyWith(color: AppColors.accent),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showInfoDialog(String title, String message, {VoidCallback? onDismiss}) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(title, style: AppTextStyles.titleMedium),
+        content: Text(message, style: AppTextStyles.bodyMedium.copyWith(height: 1.5)),
+        actions: [
+          TextButton(
+            onPressed: () {
+              HapticService.selection();
+              Navigator.of(ctx).pop();
+              onDismiss?.call();
+            },
+            child: Text(
+              'Got it',
+              style: AppTextStyles.labelLarge.copyWith(color: AppColors.accent),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Helpers ──────────────────────────────────────────────────────────────────
 
   String _friendlyError(String raw) {
-    if (raw.contains('Invalid login'))      return 'Wrong email or password';
-    if (raw.contains('already registered')) return 'Account exists — sign in instead';
-    if (raw.contains('Password should'))    return 'Password must be at least 6 characters';
-    return 'Something went wrong. Try again.';
+    if (raw.contains('Invalid login') || raw.contains('invalid_credentials')) {
+      return 'Wrong email or password. Please try again.';
+    }
+    if (raw.contains('already registered') || raw.contains('already been registered')) {
+      return 'An account with this email already exists. Sign in instead.';
+    }
+    if (raw.contains('Password should') || raw.contains('password')) {
+      return 'Password must be at least 6 characters.';
+    }
+    if (raw.contains('Unable to validate') || raw.contains('email')) {
+      return 'Please enter a valid email address.';
+    }
+    if (raw.contains('network') || raw.contains('connection')) {
+      return 'No internet connection. Please check your network and try again.';
+    }
+    return 'Something went wrong. Please try again.';
   }
 
-  // ── Build ───────────────────────────────────────────────────────────────────
+  // ── Build ────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -164,11 +241,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                   nameCtrl: _nameCtrl,
                   isSignUp: _isSignUp,
                   isLoading: _isLoading,
-                  error: _error,
-                  onToggle: () => setState(() {
-                    _isSignUp = !_isSignUp;
-                    _error = null;
-                  }),
+                  onToggle: () async {
+                    await HapticService.selection();
+                    setState(() {
+                      _isSignUp = !_isSignUp;
+                    });
+                  },
                   onSubmit: _submitAuth,
                 )
               : _GoalView(
@@ -176,7 +254,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                   selected: _calorieGoal,
                   presets: _goalPresets,
                   isLoading: _isLoading,
-                  onSelected: (v) => setState(() => _calorieGoal = v),
+                  onSelected: (v) async {
+                    await HapticService.selection();
+                    setState(() => _calorieGoal = v);
+                  },
                   onSubmit: _submitGoal,
                 ),
         ),
@@ -185,7 +266,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   }
 }
 
-// ─── Auth view ──────────────────────────────────────────────────────────────
+// ─── Auth view ────────────────────────────────────────────────────────────────
 
 class _AuthView extends StatelessWidget {
   final TextEditingController emailCtrl;
@@ -193,7 +274,6 @@ class _AuthView extends StatelessWidget {
   final TextEditingController nameCtrl;
   final bool isSignUp;
   final bool isLoading;
-  final String? error;
   final VoidCallback onToggle;
   final VoidCallback onSubmit;
 
@@ -204,7 +284,6 @@ class _AuthView extends StatelessWidget {
     required this.nameCtrl,
     required this.isSignUp,
     required this.isLoading,
-    required this.error,
     required this.onToggle,
     required this.onSubmit,
   });
@@ -225,7 +304,9 @@ class _AuthView extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            'Point your camera.\nTrack your calories.',
+            isSignUp
+                ? 'Track calories.\nFaster than ever.'
+                : 'Welcome back.\nLet\'s keep going.',
             style: AppTextStyles.titleLarge.copyWith(
               color: AppColors.textSecondary,
               fontWeight: FontWeight.w400,
@@ -233,7 +314,7 @@ class _AuthView extends StatelessWidget {
             ),
           ),
 
-          const SizedBox(height: 56),
+          const SizedBox(height: 48),
 
           // Sign-up / Sign-in toggle
           Row(
@@ -254,14 +335,23 @@ class _AuthView extends StatelessWidget {
 
           const SizedBox(height: 28),
 
-          if (isSignUp) ...[
-            _InputField(
-              controller: nameCtrl,
-              hint: 'Your name',
-              icon: Icons.person_outline_rounded,
-            ),
-            const SizedBox(height: 12),
-          ],
+          AnimatedSize(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOut,
+            child: isSignUp
+                ? Column(
+                    children: [
+                      _InputField(
+                        controller: nameCtrl,
+                        hint: 'Your name',
+                        icon: Icons.person_outline_rounded,
+                        textCapitalization: TextCapitalization.words,
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                  )
+                : const SizedBox.shrink(),
+          ),
           _InputField(
             controller: emailCtrl,
             hint: 'Email address',
@@ -271,38 +361,50 @@ class _AuthView extends StatelessWidget {
           const SizedBox(height: 12),
           _InputField(
             controller: passwordCtrl,
-            hint: 'Password',
+            hint: isSignUp ? 'Create a password (6+ chars)' : 'Password',
             icon: Icons.lock_outline_rounded,
             obscureText: true,
           ),
 
-          if (error != null) ...[
-            const SizedBox(height: 14),
-            Text(
-              error!,
-              style: AppTextStyles.caption.copyWith(
-                color: error!.contains('Check your inbox')
-                    ? AppColors.success
-                    : AppColors.danger,
-                height: 1.5,
-              ),
-            ),
-          ],
-
           const SizedBox(height: 28),
 
-          ElevatedButton(
-            onPressed: isLoading ? null : onSubmit,
-            child: isLoading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: AppColors.background,
-                    ),
-                  )
-                : Text(isSignUp ? 'Get started' : 'Sign in'),
+          // Primary CTA
+          _PrimaryButton(
+            label: isSignUp ? 'Get started' : 'Sign in',
+            isLoading: isLoading,
+            onTap: onSubmit,
+          ),
+
+          const SizedBox(height: 20),
+
+          // Toggle link at bottom
+          Center(
+            child: GestureDetector(
+              onTap: onToggle,
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                child: RichText(
+                  text: TextSpan(
+                    children: [
+                      TextSpan(
+                        text: isSignUp
+                            ? 'Already have an account? '
+                            : 'Don\'t have an account? ',
+                        style: AppTextStyles.bodyMedium,
+                      ),
+                      TextSpan(
+                        text: isSignUp ? 'Sign in' : 'Create one',
+                        style: AppTextStyles.bodyMedium.copyWith(
+                          color: AppColors.accent,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
 
           const SizedBox(height: 32),
@@ -312,7 +414,7 @@ class _AuthView extends StatelessWidget {
   }
 }
 
-// ─── Calorie goal view ──────────────────────────────────────────────────────
+// ─── Calorie goal view ────────────────────────────────────────────────────────
 
 class _GoalView extends StatelessWidget {
   final int selected;
@@ -341,8 +443,7 @@ class _GoalView extends StatelessWidget {
 
           Text(
             'Set your goal',
-            style:
-                AppTextStyles.displayLarge.copyWith(color: AppColors.accent),
+            style: AppTextStyles.displayLarge.copyWith(color: AppColors.accent),
           ),
           const SizedBox(height: 10),
           Text(
@@ -369,14 +470,10 @@ class _GoalView extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(
                       horizontal: 22, vertical: 14),
                   decoration: BoxDecoration(
-                    color: isSelected
-                        ? AppColors.accent
-                        : AppColors.surface,
+                    color: isSelected ? AppColors.accent : AppColors.surface,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                      color: isSelected
-                          ? AppColors.accent
-                          : AppColors.border,
+                      color: isSelected ? AppColors.accent : AppColors.border,
                     ),
                   ),
                   child: Text(
@@ -425,7 +522,7 @@ class _GoalView extends StatelessWidget {
                   value: selected.toDouble(),
                   min: 1200,
                   max: 4000,
-                  divisions: 56, // 50 kcal steps
+                  divisions: 56,
                   onChanged: (v) => onSelected(v.round()),
                 ),
               ),
@@ -441,18 +538,10 @@ class _GoalView extends StatelessWidget {
 
           const Spacer(),
 
-          ElevatedButton(
-            onPressed: isLoading ? null : onSubmit,
-            child: isLoading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: AppColors.background,
-                    ),
-                  )
-                : const Text('Start tracking'),
+          _PrimaryButton(
+            label: 'Start tracking',
+            isLoading: isLoading,
+            onTap: onSubmit,
           ),
 
           const SizedBox(height: 32),
@@ -462,7 +551,7 @@ class _GoalView extends StatelessWidget {
   }
 }
 
-// ─── Shared widgets ──────────────────────────────────────────────────────────
+// ─── Shared widgets ───────────────────────────────────────────────────────────
 
 class _TabButton extends StatelessWidget {
   final String label;
@@ -479,26 +568,48 @@ class _TabButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: Text(
-        label,
-        style: (isActive
-                ? AppTextStyles.labelLarge
-                : AppTextStyles.bodyMedium)
-            .copyWith(
-          color:
-              isActive ? AppColors.textPrimary : AppColors.textTertiary,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: (isActive
+                      ? AppTextStyles.labelLarge
+                      : AppTextStyles.bodyMedium)
+                  .copyWith(
+                color: isActive
+                    ? AppColors.textPrimary
+                    : AppColors.textTertiary,
+              ),
+            ),
+            const SizedBox(height: 3),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              height: 2,
+              width: isActive ? 100 : 0,
+              decoration: BoxDecoration(
+                color: AppColors.accent,
+                borderRadius: BorderRadius.circular(1),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-class _InputField extends StatelessWidget {
+// Stateful so we can own a FocusNode and fire haptics on focus.
+class _InputField extends StatefulWidget {
   final TextEditingController controller;
   final String hint;
   final IconData icon;
   final bool obscureText;
   final TextInputType keyboardType;
+  final TextCapitalization textCapitalization;
 
   const _InputField({
     required this.controller,
@@ -506,30 +617,136 @@ class _InputField extends StatelessWidget {
     required this.icon,
     this.obscureText = false,
     this.keyboardType = TextInputType.text,
+    this.textCapitalization = TextCapitalization.none,
   });
 
   @override
+  State<_InputField> createState() => _InputFieldState();
+}
+
+class _InputFieldState extends State<_InputField> {
+  final _focusNode = FocusNode();
+  bool _isFocused = false;
+  bool _showPassword = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode.addListener(() {
+      final focused = _focusNode.hasFocus;
+      if (focused) HapticService.selection();
+      setState(() => _isFocused = focused);
+    });
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(
+          color: _isFocused ? AppColors.accent : AppColors.border,
+          width: _isFocused ? 1.5 : 1.0,
+        ),
       ),
       child: TextField(
-        controller: controller,
-        obscureText: obscureText,
-        keyboardType: keyboardType,
+        controller: widget.controller,
+        focusNode: _focusNode,
+        obscureText: widget.obscureText && !_showPassword,
+        keyboardType: widget.keyboardType,
+        textCapitalization: widget.textCapitalization,
         style: AppTextStyles.bodyLarge,
         cursorColor: AppColors.accent,
         decoration: InputDecoration(
-          hintText: hint,
-          hintStyle: AppTextStyles.bodyMedium,
-          prefixIcon: Icon(icon, color: AppColors.textSecondary, size: 20),
+          hintText: widget.hint,
+          hintStyle: AppTextStyles.bodyMedium.copyWith(
+            color: AppColors.textTertiary,
+          ),
+          prefixIcon: Icon(
+            widget.icon,
+            color: _isFocused ? AppColors.accent : AppColors.textSecondary,
+            size: 20,
+          ),
+          suffixIcon: widget.obscureText
+              ? GestureDetector(
+                  onTap: () {
+                    HapticService.selection();
+                    setState(() => _showPassword = !_showPassword);
+                  },
+                  child: Icon(
+                    _showPassword
+                        ? Icons.visibility_off_rounded
+                        : Icons.visibility_rounded,
+                    color: AppColors.textSecondary,
+                    size: 20,
+                  ),
+                )
+              : null,
           border: InputBorder.none,
           contentPadding:
               const EdgeInsets.symmetric(vertical: 16, horizontal: 4),
         ),
+      ),
+    );
+  }
+}
+
+// ─── Primary Button ───────────────────────────────────────────────────────────
+
+class _PrimaryButton extends StatelessWidget {
+  final String label;
+  final bool isLoading;
+  final VoidCallback onTap;
+
+  const _PrimaryButton({
+    required this.label,
+    required this.isLoading,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      height: 52,
+      child: ElevatedButton(
+        onPressed: isLoading ? null : () {
+          HapticService.heavy();
+          onTap();
+        },
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.accent,
+          foregroundColor: AppColors.background,
+          disabledBackgroundColor: AppColors.accent.withValues(alpha: 0.4),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          elevation: 0,
+        ),
+        child: isLoading
+            ? const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: AppColors.background,
+                ),
+              )
+            : Text(
+                label,
+                style: AppTextStyles.labelLarge.copyWith(
+                  color: AppColors.background,
+                  fontSize: 16,
+                ),
+              ),
       ),
     );
   }
