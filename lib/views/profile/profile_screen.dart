@@ -15,6 +15,91 @@ import '../../widgets/labeled_text_field.dart';
 import '../../widgets/sheet_handle.dart';
 import '../paywall/paywall_sheet.dart';
 
+/// Calls the `delete-account` Edge Function, signs out, and navigates away.
+/// Uses a top-level function so the logic is reusable and not buried inside
+/// a `ConsumerWidget.build` closure.
+Future<void> _deleteAccount(BuildContext context, WidgetRef ref) async {
+  // Optimistic UX: show a loading overlay via the scaffold messenger.
+  final messenger = ScaffoldMessenger.of(context);
+  messenger.showSnackBar(
+    const SnackBar(
+      content: Text('Deleting account…'),
+      duration: Duration(seconds: 30),
+    ),
+  );
+
+  try {
+    final response = await Supabase.instance.client.functions.invoke(
+      'delete-account',
+    );
+
+    messenger.hideCurrentSnackBar();
+
+    final body = response.data as Map<String, dynamic>?;
+    final success = body?['success'] == true;
+
+    if (!success) {
+      if (context.mounted) {
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: AppColors.surface,
+            title: Text('Deletion failed', style: AppTextStyles.titleMedium),
+            content: Text(
+              body?['hint'] as String? ??
+                  'Something went wrong. Please try again or contact support.',
+              style: AppTextStyles.bodyMedium,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+      return;
+    }
+
+    // If there's a non-fatal warning (e.g. Auth row cleanup failed), show it
+    // but continue — the user's data is already deleted.
+    final warning = body?['warning'] as String?;
+
+    await ref.read(authControllerProvider.notifier).signOut();
+
+    if (context.mounted) {
+      if (warning != null) {
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: AppColors.surface,
+            title: Text('Note', style: AppTextStyles.titleMedium),
+            content: Text(warning, style: AppTextStyles.bodyMedium),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+      if (context.mounted) context.go('/onboarding');
+    }
+  } catch (e) {
+    messenger.hideCurrentSnackBar();
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: ${e.toString()}'),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+    }
+  }
+}
+
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
 
@@ -213,13 +298,7 @@ class ProfileScreen extends ConsumerWidget {
                   TextButton(
                     onPressed: () async {
                       Navigator.of(ctx).pop();
-                      // Sign out and let the router redirect handle navigation.
-                      // Full server-side deletion happens via an edge function
-                      // in Phase 2 — for now we clear the local session.
-                      await ref
-                          .read(authControllerProvider.notifier)
-                          .signOut();
-                      if (context.mounted) context.go('/onboarding');
+                      await _deleteAccount(context, ref);
                     },
                     child: Text('Delete',
                         style: TextStyle(color: AppColors.danger)),

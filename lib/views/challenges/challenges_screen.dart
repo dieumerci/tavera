@@ -9,6 +9,7 @@ import '../../models/challenge.dart';
 import '../../services/haptic_service.dart';
 import '../../services/subscription_service.dart';
 import '../../widgets/tavera_loading.dart';
+import '../paywall/paywall_sheet.dart';
 import 'create_challenge_sheet.dart';
 
 // ─── ChallengesScreen ─────────────────────────────────────────────────────────
@@ -129,7 +130,12 @@ class _ChallengesScreenState extends ConsumerState<ChallengesScreen>
             onPressed: () {
               HapticService.heavy();
               Navigator.of(ctx).pop();
-              // TODO: show paywall
+              showModalBottomSheet<void>(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (_) => const PaywallSheet(),
+              );
             },
             child: Text('Upgrade', style: TextStyle(color: AppColors.accent)),
           ),

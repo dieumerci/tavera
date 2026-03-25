@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -12,6 +12,7 @@ import '../../models/meal_plan.dart';
 import '../../services/haptic_service.dart';
 import '../../services/subscription_service.dart';
 import '../../widgets/tavera_loading.dart';
+import '../paywall/paywall_sheet.dart';
 
 // ─── MealPlannerScreen ────────────────────────────────────────────────────────
 //
@@ -946,7 +947,12 @@ class _PaywallPlaceholder extends StatelessWidget {
             ElevatedButton(
               onPressed: () {
                 HapticService.heavy();
-                // TODO: show paywall sheet
+                showModalBottomSheet<void>(
+                  context: context,
+                  isScrollControlled: true,
+                  backgroundColor: Colors.transparent,
+                  builder: (_) => const PaywallSheet(),
+                );
               },
               child: const Text('Unlock Meal Planner'),
             ),

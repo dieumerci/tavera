@@ -10,6 +10,7 @@ import '../../models/coaching_insight.dart';
 import '../../services/haptic_service.dart';
 import '../../services/subscription_service.dart';
 import '../../widgets/tavera_loading.dart';
+import '../paywall/paywall_sheet.dart';
 
 // ─── CoachingScreen ───────────────────────────────────────────────────────────
 //
@@ -398,7 +399,12 @@ class _PaywallPlaceholder extends StatelessWidget {
             ElevatedButton(
               onPressed: () {
                 HapticService.heavy();
-                // TODO: show paywall sheet
+                showModalBottomSheet<void>(
+                  context: context,
+                  isScrollControlled: true,
+                  backgroundColor: Colors.transparent,
+                  builder: (_) => const PaywallSheet(),
+                );
               },
               child: const Text('Unlock AI Coaching'),
             ),
