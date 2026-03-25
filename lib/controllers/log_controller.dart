@@ -143,22 +143,89 @@ final historyLogsProvider =
 });
 
 // ── Water tracking ──────────────────────────────────────────────────────────
-// Resets when the app cold-starts (daily reset). Phase 2 will persist to DB.
+// Persisted to `daily_stats` in Supabase so intake survives restarts and
+// syncs across devices. UI updates are instant (optimistic); DB writes are
+// fire-and-forget so a network hiccup never blocks the add/subtract action.
 
 const _waterStepMl = 250;
 
 final waterMlProvider = StateNotifierProvider<_WaterNotifier, int>(
-  (_) => _WaterNotifier(),
+  (_) => _WaterNotifier()..loadToday(),
 );
 
 class _WaterNotifier extends StateNotifier<int> {
   _WaterNotifier() : super(0);
 
-  void add() => state = state + _waterStepMl;
-  void subtract() {
-    if (state >= _waterStepMl) state = state - _waterStepMl;
+  // ISO YYYY-MM-DD for the user's local today.
+  static String _todayKey() {
+    final now = DateTime.now();
+    return '${now.year}-'
+        '${now.month.toString().padLeft(2, '0')}-'
+        '${now.day.toString().padLeft(2, '0')}';
   }
-  void reset() => state = 0;
+
+  /// Load today's persisted value from DB on first build.
+  Future<void> loadToday() async {
+    try {
+      final client = Supabase.instance.client;
+      final userId = client.auth.currentSession?.user.id;
+      if (userId == null) return;
+
+      final row = await client
+          .from('daily_stats')
+          .select('water_ml')
+          .eq('user_id', userId)
+          .eq('stat_date', _todayKey())
+          .maybeSingle();
+
+      if (row != null && mounted) {
+        state = (row['water_ml'] as int?) ?? 0;
+      }
+    } catch (_) {
+      // Non-fatal — fall back to in-memory zero.
+    }
+  }
+
+  void add() {
+    state = state + _waterStepMl;
+    _persist();
+  }
+
+  void subtract() {
+    if (state >= _waterStepMl) {
+      state = state - _waterStepMl;
+      _persist();
+    }
+  }
+
+  void reset() {
+    state = 0;
+    _persist();
+  }
+
+  /// Fire-and-forget upsert — never awaited so UI stays instant.
+  void _persist() {
+    _upsert(state);
+  }
+
+  static Future<void> _upsert(int waterMl) async {
+    try {
+      final client = Supabase.instance.client;
+      final userId = client.auth.currentSession?.user.id;
+      if (userId == null) return;
+
+      await client.from('daily_stats').upsert(
+        {
+          'user_id': userId,
+          'stat_date': _todayKey(),
+          'water_ml': waterMl,
+        },
+        onConflict: 'user_id,stat_date',
+      );
+    } catch (_) {
+      // Non-fatal — next successful write will self-correct.
+    }
+  }
 }
 
 // ── Direct log (barcode / manual quick-add) ─────────────────────────────────
