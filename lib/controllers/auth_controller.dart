@@ -13,19 +13,24 @@ final currentSessionProvider = Provider<Session?>((ref) {
   return ref.watch(authStateProvider).valueOrNull?.session;
 });
 
-/// Current user's profile from the `profiles` table.
-final userProfileProvider = FutureProvider<UserProfile?>((ref) async {
+/// Current user's profile — live stream from the `profiles` table.
+///
+/// Uses Supabase Realtime under the hood: emits immediately with the current
+/// row, then re-emits whenever any field (including subscription_tier) changes
+/// — even when updated externally via SQL or a webhook. All widgets watching
+/// this provider rebuild automatically with no manual invalidation required.
+///
+/// Requires the `profiles` table to be included in the Supabase Realtime
+/// publication (Dashboard → Database → Replication → supabase_realtime).
+final userProfileProvider = StreamProvider<UserProfile?>((ref) {
   final session = ref.watch(currentSessionProvider);
-  if (session == null) return null;
+  if (session == null) return Stream.value(null);
 
-  final response = await Supabase.instance.client
+  return Supabase.instance.client
       .from('profiles')
-      .select()
+      .stream(primaryKey: ['id'])
       .eq('id', session.user.id)
-      .maybeSingle();
-
-  if (response == null) return null;
-  return UserProfile.fromMap(response);
+      .map((rows) => rows.isEmpty ? null : UserProfile.fromMap(rows.first));
 });
 
 class AuthController extends AsyncNotifier<void> {
