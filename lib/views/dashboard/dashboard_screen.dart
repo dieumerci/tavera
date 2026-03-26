@@ -34,6 +34,7 @@ class DashboardScreen extends ConsumerWidget {
     // Phase 2 providers — all optional; empty/null = section hidden
     final knownMeals = ref.watch(topKnownMealsProvider);
     final unreadInsights = ref.watch(unreadInsightCountProvider);
+    final weeklyCalories = ref.watch(weeklyCaloriesProvider).valueOrNull;
     final activeChallenges = ref.watch(myChallengesProvider).valueOrNull
             ?.where((c) => c.isActive)
             .toList() ??
@@ -177,7 +178,20 @@ class DashboardScreen extends ConsumerWidget {
               ),
             ),
 
-            const SliverToBoxAdapter(child: SizedBox(height: 20)),
+            // ── Weekly calorie trend ────────────────────────────────────────
+            if (weeklyCalories != null && weeklyCalories.any((v) => v > 0)) ...[
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: _WeeklyTrendCard(
+                    calories: weeklyCalories,
+                    goal: calorieGoal,
+                  ),
+                ),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 20)),
+            ] else
+              const SliverToBoxAdapter(child: SizedBox(height: 20)),
 
             // ── Water intake ────────────────────────────────────────────────
             SliverToBoxAdapter(
@@ -321,6 +335,102 @@ class DashboardScreen extends ConsumerWidget {
       default:
         return 0;
     }
+  }
+}
+
+// ─── Weekly calorie trend ─────────────────────────────────────────────────────
+
+class _WeeklyTrendCard extends StatelessWidget {
+  final List<int> calories; // 7 values, oldest → newest
+  final int goal;
+  const _WeeklyTrendCard({required this.calories, required this.goal});
+
+  @override
+  Widget build(BuildContext context) {
+    final dayLabels = List.generate(7, (i) {
+      final d = DateTime.now().subtract(Duration(days: 6 - i));
+      return DateFormat('E').format(d)[0]; // M T W T F S S
+    });
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('7-day trend', style: AppTextStyles.labelLarge),
+              Text(
+                'Goal: $goal kcal',
+                style: AppTextStyles.caption
+                    .copyWith(color: AppColors.textSecondary),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            height: 72,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: List.generate(7, (i) {
+                final kcal = calories[i];
+                final frac = goal > 0
+                    ? (kcal / goal).clamp(0.0, 1.5)
+                    : 0.0;
+                final isToday = i == 6;
+                final Color barColor = kcal == 0
+                    ? AppColors.border
+                    : kcal <= goal
+                        ? AppColors.accent
+                        : AppColors.danger;
+
+                return Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 3),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        // Bar
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 400),
+                          curve: Curves.easeOut,
+                          height: math.max(4, frac * 52),
+                          decoration: BoxDecoration(
+                            color: barColor
+                                .withValues(alpha: isToday ? 1.0 : 0.65),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        // Day label
+                        Text(
+                          dayLabels[i],
+                          style: AppTextStyles.caption.copyWith(
+                            fontSize: 10,
+                            color: isToday
+                                ? AppColors.accent
+                                : AppColors.textTertiary,
+                            fontWeight: isToday
+                                ? FontWeight.w700
+                                : FontWeight.w400,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

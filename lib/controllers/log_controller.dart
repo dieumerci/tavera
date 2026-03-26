@@ -156,6 +156,45 @@ final historyLogsProvider =
       .toList();
 });
 
+// ── 7-day calorie trend ─────────────────────────────────────────────────────
+
+/// Returns a list of 7 integers — calories consumed for each of the last 7
+/// local calendar days, oldest first (index 0 = 6 days ago, index 6 = today).
+/// Days with no logs contribute 0.
+final weeklyCaloriesProvider = FutureProvider<List<int>>((ref) async {
+  final client = Supabase.instance.client;
+  final userId = client.auth.currentUser?.id;
+  if (userId == null) return List.filled(7, 0);
+
+  final today = DateTime.now();
+  // Fetch 7-day window in one query: from 6 days ago (local midnight UTC) to
+  // start of tomorrow.
+  final windowStart =
+      DateTime(today.year, today.month, today.day - 6).toUtc();
+  final windowEnd =
+      DateTime(today.year, today.month, today.day + 1).toUtc();
+
+  final rows = await client
+      .from('meal_logs')
+      .select('logged_at, total_calories')
+      .eq('user_id', userId)
+      .gte('logged_at', windowStart.toIso8601String())
+      .lt('logged_at', windowEnd.toIso8601String());
+
+  // Bucket calories by local calendar day offset (0 = 6 days ago, 6 = today).
+  final buckets = List.filled(7, 0);
+  for (final row in (rows as List<dynamic>)) {
+    final loggedAt = DateTime.parse(row['logged_at'] as String).toLocal();
+    final dayOffset = today.difference(
+      DateTime(loggedAt.year, loggedAt.month, loggedAt.day),
+    ).inDays;
+    if (dayOffset >= 0 && dayOffset < 7) {
+      buckets[6 - dayOffset] += (row['total_calories'] as num?)?.toInt() ?? 0;
+    }
+  }
+  return buckets;
+});
+
 // ── Water tracking ──────────────────────────────────────────────────────────
 // Persisted to `daily_stats` in Supabase so intake survives restarts and
 // syncs across devices. UI updates are instant (optimistic); DB writes are

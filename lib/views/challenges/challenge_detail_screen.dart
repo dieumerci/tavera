@@ -127,6 +127,17 @@ class _ChallengeContent extends ConsumerWidget {
             ),
           ),
 
+        // Leave button (non-creator participants on active/upcoming challenges)
+        if (myParticipation.userId.isNotEmpty &&
+            challenge.creatorId != currentUserId &&
+            !challenge.isCompleted)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+              child: _LeaveButton(challengeId: challenge.id),
+            ),
+          ),
+
         const SliverToBoxAdapter(child: SizedBox(height: 48)),
       ],
     );
@@ -528,6 +539,93 @@ class _InviteSection extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ─── Leave button ─────────────────────────────────────────────────────────────
+
+class _LeaveButton extends ConsumerStatefulWidget {
+  final String challengeId;
+  const _LeaveButton({required this.challengeId});
+
+  @override
+  ConsumerState<_LeaveButton> createState() => _LeaveButtonState();
+}
+
+class _LeaveButtonState extends ConsumerState<_LeaveButton> {
+  bool _leaving = false;
+
+  Future<void> _confirmAndLeave() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text('Leave challenge?', style: AppTextStyles.titleMedium),
+        content: Text(
+          'Your progress will be removed from the leaderboard.',
+          style: AppTextStyles.bodyMedium
+              .copyWith(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(
+              'Leave',
+              style: TextStyle(color: AppColors.danger),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _leaving = true);
+    HapticService.medium();
+
+    final success = await ref
+        .read(myChallengesProvider.notifier)
+        .leave(widget.challengeId);
+
+    if (!mounted) return;
+    if (success) {
+      context.pop();
+    } else {
+      setState(() => _leaving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Failed to leave challenge. Please try again.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton(
+      onPressed: _leaving ? null : _confirmAndLeave,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppColors.danger,
+        side: BorderSide(color: AppColors.danger.withValues(alpha: 0.5)),
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+      child: _leaving
+          ? SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: AppColors.danger,
+              ),
+            )
+          : const Text('Leave challenge'),
     );
   }
 }
