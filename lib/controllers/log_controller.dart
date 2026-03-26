@@ -10,6 +10,7 @@ import '../models/meal_log.dart';
 import '../models/user_profile.dart';
 import 'auth_controller.dart' show authStateProvider;
 import 'challenge_controller.dart' show myChallengesProvider;
+import 'known_meal_controller.dart' show knownMealControllerProvider;
 
 // ── Daily summary state ─────────────────────────────────────────────────────
 
@@ -328,6 +329,12 @@ Future<MealLog?> directLogMeal(
     }).select().single();
 
     final log = MealLog.fromMap(response);
+
+    // Record to adaptive meal memory — fire-and-forget, non-fatal.
+    ref
+        .read(knownMealControllerProvider.notifier)
+        .recordLog(items)
+        .ignore();
 
     // Instant chip update + invalidate today's history cache.
     ref.read(logControllerProvider.notifier).optimisticallyAddLog(log);

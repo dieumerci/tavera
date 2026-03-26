@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/food_item.dart';
 import '../models/meal_log.dart';
 import 'challenge_controller.dart' show myChallengesProvider;
+import 'known_meal_controller.dart' show knownMealControllerProvider;
 import 'log_controller.dart' show notifyChallenges;
 
 // Top-level function required by compute() — runs in a background isolate.
@@ -268,6 +269,14 @@ class MealController extends Notifier<MealState> {
       }).select().single();
 
       final log = MealLog.fromMap(response);
+
+      // Record to adaptive meal memory — fire-and-forget, non-fatal.
+      // Capture items before any state mutation so the list is stable.
+      final savedItems = List<FoodItem>.from(state.items);
+      ref
+          .read(knownMealControllerProvider.notifier)
+          .recordLog(savedItems)
+          .ignore();
 
       // Score any active challenges in the background — never awaited.
       // Skip entirely if the user has no active challenges to avoid a

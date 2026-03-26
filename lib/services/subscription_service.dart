@@ -29,6 +29,12 @@ import '../models/user_profile.dart';
 class SubscriptionService {
   SubscriptionService._();
 
+  // ── Dev override ─────────────────────────────────────────────────────────
+  // Set to true to unlock all premium features locally without a DB write.
+  // Flip back to false before shipping to production.
+  // ignore: dead_code
+  static const bool _devPremiumOverride = true;
+
   // ── Primary gate ─────────────────────────────────────────────────────────
 
   /// Returns true when the current user has an active premium subscription.
@@ -81,6 +87,7 @@ class SubscriptionService {
   // ── Internal ─────────────────────────────────────────────────────────────
 
   static bool _checkPremium(UserProfile? profile) {
+    if (_devPremiumOverride) return true;
     if (profile == null) return false;
     // Phase 2 hook: if RevenueCat is configured and returns a result, trust it.
     // For now, trust the DB column.
