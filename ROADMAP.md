@@ -223,7 +223,7 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 
 **Status: 🔄 IN PROGRESS**
 
-> **Infrastructure complete (March 26, 2026):** Challenges tab wired to shell nav (Tab 2). Floating FAB with notch. Strong haptics. Account deletion Edge Function live. Challenge scoring (`challenge-notifier`) wired to all log paths. Water intake persisted to `daily_stats`. Dashboard cold-start data loading fixed. Camera permission screen fixed. Profile back-button crash fixed. Paywall sheet helper + Meal Planner / Challenges features added. `DateFormatting.toIsoDateString()` extension centralised.
+> **Infrastructure complete (March 26, 2026):** Challenges tab wired to shell nav (Tab 2). Floating FAB with notch. Strong haptics. Account deletion Edge Function live. Challenge scoring (`challenge-notifier`) wired to all log paths. Water intake persisted to `daily_stats`. Dashboard cold-start data loading fixed. Camera permission screen fixed. Profile back-button crash fixed. Paywall sheet helper + Meal Planner / Challenges features added. `DateFormatting.toIsoDateString()` extension centralised. PostHog analytics integrated (8 key events, no-op in dev). Cold-start auth fix applied to all AsyncNotifier controllers. Adaptive meal memory wired to both log paths. Migration 005: `increment_known_meal_count` RPC, `grocery_lists` upsert constraint, challenges RLS self-recursion fixed.
 
 > **Subscription & Paywall flexibility note:** The monetisation model and paywall placement are not yet finalised. The architecture must remain flexible enough to support different models (freemium, hard paywall, trial-first) without requiring significant rewrites. Gate features behind a capabilities check that abstracts away the specific model. RevenueCat is the planned payment layer; it supports model changes at the product configuration level.
 
@@ -332,8 +332,11 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 
 ### Analytics
 
-- [ ] Set up PostHog and integrate `posthog_flutter`
-- [ ] Track key events: meal_logged, camera_opened, known_meal_used, paywall_shown, subscription_started, challenge_joined, challenge_completed, meal_plan_generated, grocery_list_opened
+- ✅ Integrate `posthog_flutter` (v4.6.0) with `AnalyticsService` abstraction layer — no-op when `POSTHOG_API_KEY` not set, silent error swallowing
+- ✅ Track key events: `meal_logged` (source, calories, item_count), `paywall_shown` (source), `challenge_created`, `challenge_joined` (method), `meal_plan_generated`, `coaching_insights_generated`, `known_meal_relogged`
+- ✅ User identify/reset wired to `authStateProvider` stream in `main.dart`
+- [ ] Set up PostHog project, add `POSTHOG_API_KEY` to build configuration
+- [ ] Track additional events: `camera_opened`, `barcode_scanned`, `subscription_started`, `grocery_list_opened`, `challenge_completed`
 - [ ] Build conversion funnel from onboarding → first log → day 7 retention → subscription
 
 ### Public Launch
@@ -428,13 +431,11 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 
 ## Immediate Next Actions (Phase 2 — Sprint)
 
-1. **Social Challenges DB schema** — write and apply migration for `challenges`, `challenge_participants`, `challenge_events` (Edge Function wiring already done — unblocks full leaderboard)
-2. **Challenge creation & discovery screens** — creation form, join-by-invite-code flow, leaderboard card
-3. **RevenueCat setup** — create products in App Store Connect and Google Play Console, integrate SDK, build `SubscriptionService` abstraction
-4. **Adaptive meal memory** — known meal detection query + suggestion chips on Dashboard
-5. **PostHog analytics** — integrate `posthog_flutter`, wire key events
-6. **Meal plan analyser Edge Function** — `analyse-eating-patterns` prerequisite for the meal planner
-7. **Beta testing setup** — TestFlight + Google Play Internal Testing track
+1. **Apply migration 005** — run `supabase/migrations/005_rpc_and_constraints.sql` on the Tavera Supabase project (`hdtuezlbabsebkoucjhp`): adds `increment_known_meal_count` RPC, `grocery_lists` upsert constraint, fixes challenges RLS recursion. CLI: `supabase db push` or paste SQL into the Supabase dashboard SQL editor.
+2. **Deploy Edge Functions** — `supabase functions deploy` for all 5 functions (challenge-notifier, generate-coaching, generate-meal-plan, analyse-eating-patterns, delete-account). All source is in `supabase/functions/`.
+3. **PostHog project setup** — create project at posthog.com, copy API key, add `--dart-define=POSTHOG_API_KEY=phc_...` to build/run configuration
+4. **RevenueCat setup** — create products in App Store Connect and Google Play Console, integrate `purchases_flutter` SDK, build `SubscriptionService` abstraction
+5. **Beta testing setup** — TestFlight + Google Play Internal Testing track
 
 ---
 
