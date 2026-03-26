@@ -134,51 +134,64 @@ class MealPlanController extends AsyncNotifier<MealPlanState> {
 
   /// Toggles a grocery item's checked state and persists the change.
   Future<void> toggleGroceryItem(String itemId) async {
+    await _mutateList((list) {
+      final item = list.items.firstWhere((i) => i.id == itemId);
+      return list.withUpdatedItem(item.copyWith(isChecked: !item.isChecked));
+    });
+  }
+
+  /// Updates the quantity (or name) of a grocery item and persists.
+  Future<void> editGroceryItem(
+      String itemId, {String? quantity, String? name}) async {
+    await _mutateList((list) {
+      final item = list.items.firstWhere((i) => i.id == itemId);
+      return list.withUpdatedItem(item.copyWith(quantity: quantity, name: name));
+    });
+  }
+
+  /// Removes a grocery item by id and persists.
+  Future<void> removeGroceryItem(String itemId) async {
+    await _mutateList((list) => list.withRemovedItem(itemId));
+  }
+
+  /// Adds a custom grocery item to the list and persists.
+  Future<void> addGroceryItem({
+    required String name,
+    required String quantity,
+    GroceryCategory category = GroceryCategory.other,
+  }) async {
+    await _mutateList((list) => list.withAddedItem(GroceryItem(
+          id: DateTime.now().microsecondsSinceEpoch.toString(),
+          name: name.trim(),
+          quantity: quantity.trim(),
+          category: category,
+        )));
+  }
+
+  /// Shared optimistic-update-then-persist helper for all grocery mutations.
+  Future<void> _mutateList(
+      GroceryList Function(GroceryList) transform) async {
     final current = state.valueOrNull;
     if (current?.groceryList == null) return;
 
-    final list = current!.groceryList!;
-    final item = list.items.firstWhere((i) => i.id == itemId);
-    final updated = list.withUpdatedItem(item.copyWith(isChecked: !item.isChecked));
-
-    // Optimistic update first.
+    final updated = transform(current!.groceryList!);
     state = AsyncValue.data(current.copyWith(groceryList: updated));
 
-    // Persist the full items array (JSONB column).
     final client = Supabase.instance.client;
     try {
       await client.from('grocery_lists').update({
         'items': updated.items.map((i) => i.toMap()).toList(),
-      }).eq('id', list.id);
+      }).eq('id', updated.id);
     } catch (_) {
-      // Rollback on failure.
       state = AsyncValue.data(current);
     }
   }
 
   /// Resets all grocery items to unchecked.
   Future<void> clearCheckedItems() async {
-    final current = state.valueOrNull;
-    if (current?.groceryList == null) return;
-
-    final list = current!.groceryList!;
-    final cleared = GroceryList(
-      id: list.id,
-      userId: list.userId,
-      mealPlanId: list.mealPlanId,
-      weekStart: list.weekStart,
-      items: list.items.map((i) => i.copyWith(isChecked: false)).toList(),
-      isShared: list.isShared,
-      shareToken: list.shareToken,
-      createdAt: list.createdAt,
-    );
-
-    state = AsyncValue.data(current.copyWith(groceryList: cleared));
-
-    final client = Supabase.instance.client;
-    await client.from('grocery_lists').update({
-      'items': cleared.items.map((i) => i.toMap()).toList(),
-    }).eq('id', list.id);
+    await _mutateList((list) => list.withReplacedItems(
+          list.items.map((i) => i.copyWith(isChecked: false)).toList(),
+        ));
   }
 
   // ── Share ─────────────────────────────────────────────────────────────────

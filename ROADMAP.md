@@ -282,22 +282,10 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 - ✅ Build challenge detail screen: goal description, participant list, leaderboard, days remaining — `ChallengeDetailScreen`
 - ✅ Implement automatic progress tracking: wire meal logs to challenge goal checks via Edge Function — `challenge-notifier` Edge Function
 - ✅ Build leaderboard card: rank, avatar, username, score/streak — updates daily — `_LeaderboardRow` in detail screen
-- [ ] Display challenge progress card on Dashboard during active challenges
+- ✅ Display challenge progress card on Dashboard during active challenges — `_ChallengeStrip` shows active challenge name + days remaining
 
 #### AI motivational notifications
 - ✅ Write Edge Function `challenge-notifier` — wired to both `directLogMeal` and `MealController.confirmAndSave()`; fire-and-forget with `onComplete` callback to invalidate `myChallengesProvider` leaderboard cache; guarded by `hasChallenges` check to skip the network call when the user has no active challenges
-- [ ] Generate personalised motivational messages using OpenAI (progress-aware, not generic)
-- [ ] Send push notifications: milestone achievements, streak alerts, friendly competitive nudges
-- [ ] Notification suppression: respect the user's meal-time suppression windows
-
-#### Social sharing & infographics
-- [ ] Build auto-generated completion infographic: challenge name, user stats, rank, best day, streak
-- [ ] Implement share-to-social flow (iOS Share Sheet / Android Share Intent)
-- [ ] Badge system: challenge badges shown on profile screen
-- [ ] Implement achievement unlock notifications with celebratory animation
-
-#### AI motivational notifications
-- ✅ Write Edge Function `challenge-notifier` — fire-and-forget from both log paths; `hasChallenges` guard skips call when user has no active challenges
 - [ ] Generate personalised motivational messages using OpenAI (progress-aware, not generic)
 - [ ] Send push notifications: milestone achievements, streak alerts, friendly competitive nudges
 - [ ] Notification suppression: respect the user's meal-time suppression windows

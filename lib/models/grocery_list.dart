@@ -73,10 +73,15 @@ class GroceryItem {
     this.usedInMeals = const [],
   });
 
-  GroceryItem copyWith({bool? isChecked}) => GroceryItem(
+  GroceryItem copyWith({
+    bool? isChecked,
+    String? quantity,
+    String? name,
+  }) =>
+      GroceryItem(
         id: id,
-        name: name,
-        quantity: quantity,
+        name: name ?? this.name,
+        quantity: quantity ?? this.quantity,
         category: category,
         isChecked: isChecked ?? this.isChecked,
         usedInMeals: usedInMeals,
@@ -146,12 +151,22 @@ class GroceryList {
     );
   }
 
-  GroceryList withUpdatedItem(GroceryItem updated) => GroceryList(
+  GroceryList withUpdatedItem(GroceryItem updated) => withReplacedItems(
+        items.map((i) => i.id == updated.id ? updated : i).toList(),
+      );
+
+  GroceryList withRemovedItem(String itemId) =>
+      withReplacedItems(items.where((i) => i.id != itemId).toList());
+
+  GroceryList withAddedItem(GroceryItem item) =>
+      withReplacedItems([...items, item]);
+
+  GroceryList withReplacedItems(List<GroceryItem> newItems) => GroceryList(
         id: id,
         userId: userId,
         mealPlanId: mealPlanId,
         weekStart: weekStart,
-        items: items.map((i) => i.id == updated.id ? updated : i).toList(),
+        items: newItems,
         isShared: isShared,
         shareToken: shareToken,
         createdAt: createdAt,

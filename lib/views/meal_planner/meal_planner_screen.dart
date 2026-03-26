@@ -551,6 +551,16 @@ class _GroceryContent extends ConsumerWidget {
                     ),
                     Row(
                       children: [
+                        // Add custom item
+                        _IconAction(
+                          icon: Icons.add_rounded,
+                          tooltip: 'Add item',
+                          onTap: () {
+                            HapticService.selection();
+                            _showAddItemDialog(context, ref);
+                          },
+                        ),
+                        const SizedBox(width: 4),
                         // Clear checked
                         if (groceryList.checkedItems > 0)
                           _IconAction(
@@ -563,7 +573,7 @@ class _GroceryContent extends ConsumerWidget {
                                   .clearCheckedItems();
                             },
                           ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 4),
                         // Share
                         _IconAction(
                           icon: Icons.share_rounded,
@@ -621,15 +631,22 @@ class _GroceryContent extends ConsumerWidget {
           ),
           SliverList(
             delegate: SliverChildBuilderDelegate(
-              (context, i) => _GroceryItemTile(
-                item: entry.value[i],
-                onToggle: () {
-                  HapticService.selection();
-                  ref
-                      .read(mealPlanControllerProvider.notifier)
-                      .toggleGroceryItem(entry.value[i].id);
-                },
-              ),
+              (context, i) {
+                final tile = entry.value[i];
+                return _GroceryItemTile(
+                  item: tile,
+                  onToggle: () {
+                    HapticService.selection();
+                    ref
+                        .read(mealPlanControllerProvider.notifier)
+                        .toggleGroceryItem(tile.id);
+                  },
+                  onLongPress: () {
+                    HapticService.medium();
+                    _showItemActions(context, ref, tile);
+                  },
+                );
+              },
               childCount: entry.value.length,
             ),
           ),
@@ -643,6 +660,71 @@ class _GroceryContent extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+
+  void _showItemActions(BuildContext context, WidgetRef ref, GroceryItem item) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _GroceryItemActionSheet(
+        item: item,
+        onEdit: (newQty) => ref
+            .read(mealPlanControllerProvider.notifier)
+            .editGroceryItem(item.id, quantity: newQty),
+        onRemove: () => ref
+            .read(mealPlanControllerProvider.notifier)
+            .removeGroceryItem(item.id),
+      ),
+    );
+  }
+
+  void _showAddItemDialog(BuildContext context, WidgetRef ref) {
+    final nameCtrl = TextEditingController();
+    final qtyCtrl = TextEditingController();
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text('Add item', style: AppTextStyles.titleMedium),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameCtrl,
+              autofocus: true,
+              style: AppTextStyles.bodyLarge,
+              decoration:
+                  const InputDecoration(hintText: 'Item name (e.g. Oats)'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: qtyCtrl,
+              style: AppTextStyles.bodyLarge,
+              decoration:
+                  const InputDecoration(hintText: 'Quantity (e.g. 500g)'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              final name = nameCtrl.text.trim();
+              if (name.isEmpty) return;
+              Navigator.of(ctx).pop();
+              ref.read(mealPlanControllerProvider.notifier).addGroceryItem(
+                    name: name,
+                    quantity: qtyCtrl.text.trim(),
+                  );
+            },
+            child: Text('Add', style: TextStyle(color: AppColors.accent)),
+          ),
+        ],
+      ),
     );
   }
 
@@ -717,12 +799,15 @@ class _DeliveryStubBanner extends StatelessWidget {
 class _GroceryItemTile extends StatelessWidget {
   final GroceryItem item;
   final VoidCallback onToggle;
-  const _GroceryItemTile({required this.item, required this.onToggle});
+  final VoidCallback? onLongPress;
+  const _GroceryItemTile(
+      {required this.item, required this.onToggle, this.onLongPress});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onToggle,
+      onLongPress: onLongPress,
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
@@ -782,6 +867,112 @@ class _GroceryItemTile extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ─── Grocery item action sheet ────────────────────────────────────────────────
+
+class _GroceryItemActionSheet extends StatefulWidget {
+  final GroceryItem item;
+  final Future<void> Function(String newQty) onEdit;
+  final VoidCallback onRemove;
+  const _GroceryItemActionSheet(
+      {required this.item, required this.onEdit, required this.onRemove});
+
+  @override
+  State<_GroceryItemActionSheet> createState() =>
+      _GroceryItemActionSheetState();
+}
+
+class _GroceryItemActionSheetState extends State<_GroceryItemActionSheet> {
+  late final TextEditingController _qtyCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _qtyCtrl = TextEditingController(text: widget.item.quantity);
+  }
+
+  @override
+  void dispose() {
+    _qtyCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.fromLTRB(
+        24,
+        20,
+        24,
+        MediaQuery.of(context).padding.bottom + 20,
+      ),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.border,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(widget.item.name, style: AppTextStyles.titleMedium),
+          const SizedBox(height: 16),
+          // Quantity editor
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _qtyCtrl,
+                  style: AppTextStyles.bodyLarge,
+                  decoration: InputDecoration(
+                    labelText: 'Quantity',
+                    labelStyle: AppTextStyles.caption
+                        .copyWith(color: AppColors.textSecondary),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              ElevatedButton(
+                onPressed: () async {
+                  HapticService.selection();
+                  Navigator.of(context).pop();
+                  await widget.onEdit(_qtyCtrl.text.trim());
+                },
+                child: const Text('Save'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.delete_outline_rounded,
+                color: AppColors.danger),
+            title: Text('Remove from list',
+                style:
+                    AppTextStyles.bodyLarge.copyWith(color: AppColors.danger)),
+            onTap: () {
+              HapticService.medium();
+              Navigator.of(context).pop();
+              widget.onRemove();
+            },
+          ),
+        ],
       ),
     );
   }
