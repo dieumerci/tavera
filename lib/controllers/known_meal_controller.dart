@@ -26,10 +26,22 @@ final knownMealControllerProvider =
   KnownMealController.new,
 );
 
-/// Top 5 known meals, sorted by occurrence_count desc, for Dashboard chips.
+/// Top 5 known meals for Dashboard chips.
+/// Primary sort: time-of-day proximity (meals last logged near the current
+/// hour appear first); secondary sort: occurrence count descending.
 final topKnownMealsProvider = Provider<List<KnownMeal>>((ref) {
   final meals = ref.watch(knownMealControllerProvider).valueOrNull ?? [];
-  return meals.take(5).toList();
+  if (meals.isEmpty) return [];
+  final nowHour = DateTime.now().hour;
+  // Circular distance in hours (0–12) — closer = lower score.
+  int hourDist(int h) => min((h - nowHour).abs(), 24 - (h - nowHour).abs());
+  final sorted = [...meals]..sort((a, b) {
+      final da = hourDist(a.lastLoggedAt.toLocal().hour);
+      final db = hourDist(b.lastLoggedAt.toLocal().hour);
+      if (da != db) return da.compareTo(db);
+      return b.occurrenceCount.compareTo(a.occurrenceCount);
+    });
+  return sorted.take(5).toList();
 });
 
 // ── Controller ────────────────────────────────────────────────────────────────
@@ -56,8 +68,10 @@ class KnownMealController extends AsyncNotifier<List<KnownMeal>> {
         .order('occurrence_count', ascending: false)
         .limit(20);
 
+    final cutoff = DateTime.now().subtract(const Duration(days: 30));
     return (rows as List<dynamic>)
         .map((e) => KnownMeal.fromMap(e as Map<String, dynamic>))
+        .where((m) => m.lastLoggedAt.isAfter(cutoff))
         .toList();
   }
 
