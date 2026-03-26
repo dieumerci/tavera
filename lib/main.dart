@@ -4,10 +4,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'controllers/auth_controller.dart';
 import 'core/config/app_config.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'firebase_options.dart';
+import 'services/analytics_service.dart';
 import 'services/notification_service.dart';
 
 Future<void> main() async {
@@ -31,6 +33,7 @@ Future<void> main() async {
 
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await NotificationService.initialise();
+  await AnalyticsService.initialise();
 
   await Supabase.initialize(
     url: AppConfig.supabaseUrl,
@@ -48,6 +51,23 @@ class TaveraApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Mirror Supabase auth state into PostHog identity so every tracked
+    // event carries the correct user ID automatically.
+    ref.listen(authStateProvider, (_, authAsync) {
+      final session = authAsync.valueOrNull?.session;
+      if (session != null) {
+        AnalyticsService.identify(
+          session.user.id,
+          properties: {
+            if (session.user.email case final String email)
+              'email': email,
+          },
+        );
+      } else {
+        AnalyticsService.reset();
+      }
+    });
+
     final router = ref.watch(appRouterProvider);
 
     return MaterialApp.router(

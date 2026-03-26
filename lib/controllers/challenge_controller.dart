@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/challenge.dart';
+import '../services/analytics_service.dart';
+import 'auth_controller.dart' show authStateProvider;
 
 // ─── ChallengeController ──────────────────────────────────────────────────────
 //
@@ -32,7 +34,11 @@ final challengeDetailProvider =
 
 class MyChallengesNotifier extends AsyncNotifier<List<Challenge>> {
   @override
-  Future<List<Challenge>> build() => _fetch();
+  Future<List<Challenge>> build() async {
+    final authState = await ref.watch(authStateProvider.future);
+    if (authState.session == null) return [];
+    return _fetch();
+  }
 
   Future<List<Challenge>> _fetch() async {
     final client = Supabase.instance.client;
@@ -99,6 +105,11 @@ class MyChallengesNotifier extends AsyncNotifier<List<Challenge>> {
     // Auto-join as creator.
     await _joinChallenge(client, userId, challenge.id);
 
+    AnalyticsService.track('challenge_created', properties: {
+      'type': type.name,
+      'is_public': isPublic,
+    });
+
     await refresh();
     return challenge;
   }
@@ -124,6 +135,9 @@ class MyChallengesNotifier extends AsyncNotifier<List<Challenge>> {
 
     try {
       await _joinChallenge(client, userId, resolvedId);
+      AnalyticsService.track('challenge_joined', properties: {
+        'method': inviteCode != null ? 'invite_code' : 'direct',
+      });
       await refresh();
       return true;
     } catch (_) {
@@ -163,7 +177,11 @@ class MyChallengesNotifier extends AsyncNotifier<List<Challenge>> {
 
 class PublicChallengesNotifier extends AsyncNotifier<List<Challenge>> {
   @override
-  Future<List<Challenge>> build() => _fetch();
+  Future<List<Challenge>> build() async {
+    final authState = await ref.watch(authStateProvider.future);
+    if (authState.session == null) return [];
+    return _fetch();
+  }
 
   Future<List<Challenge>> _fetch() async {
     final client = Supabase.instance.client;
@@ -206,7 +224,11 @@ class PublicChallengesNotifier extends AsyncNotifier<List<Challenge>> {
 class ChallengeDetailNotifier
     extends FamilyAsyncNotifier<Challenge?, String> {
   @override
-  Future<Challenge?> build(String arg) => _fetch(arg);
+  Future<Challenge?> build(String arg) async {
+    final authState = await ref.watch(authStateProvider.future);
+    if (authState.session == null) return null;
+    return _fetch(arg);
+  }
 
   Future<Challenge?> _fetch(String challengeId) async {
     final client = Supabase.instance.client;

@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 import '../../core/config/app_config.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
+import '../../services/analytics_service.dart';
 import '../../services/haptic_service.dart';
 
 /// Convenience helper — shows [PaywallSheet] as a bottom sheet from any
 /// [BuildContext]. Centralises the identical `showModalBottomSheet` call that
 /// was previously duplicated across four screens.
-void showPaywallSheet(BuildContext context) {
+void showPaywallSheet(BuildContext context, {String source = 'unknown'}) {
+  AnalyticsService.track('paywall_shown', properties: {'source': source});
   showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,

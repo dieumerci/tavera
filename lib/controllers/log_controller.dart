@@ -8,6 +8,7 @@ import '../core/extensions/date_extensions.dart';
 import '../models/food_item.dart';
 import '../models/meal_log.dart';
 import '../models/user_profile.dart';
+import '../services/analytics_service.dart';
 import 'auth_controller.dart' show authStateProvider;
 import 'challenge_controller.dart' show myChallengesProvider;
 import 'known_meal_controller.dart' show knownMealControllerProvider;
@@ -329,6 +330,12 @@ Future<MealLog?> directLogMeal(
     }).select().single();
 
     final log = MealLog.fromMap(response);
+
+    AnalyticsService.track('meal_logged', properties: {
+      'source': imageUrl != null ? 'gallery' : 'barcode_or_quick_add',
+      'calories': log.totalCalories,
+      'item_count': items.length,
+    });
 
     // Record to adaptive meal memory — fire-and-forget, non-fatal.
     ref

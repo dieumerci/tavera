@@ -24,4 +24,12 @@ class Env {
         'cm9sZSI6ImFub24iLCJpYXQiOjE3NzQyNzQ3MDksImV4cCI6MjA4OTg1MDcwOX0'
         '.6i2WwozUbjWGsRDRUKuNWiJetH13zu7-7VIW9WEYZJ4',
   );
+
+  /// PostHog project API key.
+  /// Leave empty during local development — AnalyticsService becomes a no-op.
+  /// Set via --dart-define=POSTHOG_API_KEY=phc_... for staging/production builds.
+  static const posthogApiKey = String.fromEnvironment(
+    'POSTHOG_API_KEY',
+    defaultValue: '',
+  );
 }

@@ -5,6 +5,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/food_item.dart';
 import '../models/known_meal.dart';
+import '../services/analytics_service.dart';
+import 'auth_controller.dart' show authStateProvider;
 import 'log_controller.dart';
 
 // ─── KnownMealController ──────────────────────────────────────────────────────
@@ -34,7 +36,11 @@ final topKnownMealsProvider = Provider<List<KnownMeal>>((ref) {
 
 class KnownMealController extends AsyncNotifier<List<KnownMeal>> {
   @override
-  Future<List<KnownMeal>> build() => _fetch();
+  Future<List<KnownMeal>> build() async {
+    final authState = await ref.watch(authStateProvider.future);
+    if (authState.session == null) return [];
+    return _fetch();
+  }
 
   // ── Fetch ─────────────────────────────────────────────────────────────────
 
@@ -102,6 +108,10 @@ class KnownMealController extends AsyncNotifier<List<KnownMeal>> {
       if (log != null) {
         // Bump occurrence count and last_logged_at.
         await recordLog(meal.items);
+        AnalyticsService.track('known_meal_relogged', properties: {
+          'meal_name': meal.name,
+          'calories': meal.totalCalories,
+        });
       }
       return log?.id;
     } catch (_) {

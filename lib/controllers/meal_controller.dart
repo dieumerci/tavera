@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/food_item.dart';
 import '../models/meal_log.dart';
+import '../services/analytics_service.dart';
 import 'challenge_controller.dart' show myChallengesProvider;
 import 'known_meal_controller.dart' show knownMealControllerProvider;
 import 'log_controller.dart' show notifyChallenges;
@@ -269,6 +270,12 @@ class MealController extends Notifier<MealState> {
       }).select().single();
 
       final log = MealLog.fromMap(response);
+
+      AnalyticsService.track('meal_logged', properties: {
+        'source': 'camera',
+        'calories': log.totalCalories,
+        'item_count': log.items.length,
+      });
 
       // Record to adaptive meal memory — fire-and-forget, non-fatal.
       // Capture items before any state mutation so the list is stable.

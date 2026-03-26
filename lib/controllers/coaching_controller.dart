@@ -3,6 +3,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/extensions/date_extensions.dart';
 import '../models/coaching_insight.dart';
+import '../services/analytics_service.dart';
+import 'auth_controller.dart' show authStateProvider;
 
 // ─── CoachingController ───────────────────────────────────────────────────────
 //
@@ -22,7 +24,11 @@ final coachingControllerProvider =
 
 class CoachingController extends AsyncNotifier<List<CoachingInsight>> {
   @override
-  Future<List<CoachingInsight>> build() => _fetchInsights();
+  Future<List<CoachingInsight>> build() async {
+    final authState = await ref.watch(authStateProvider.future);
+    if (authState.session == null) return [];
+    return _fetchInsights();
+  }
 
   // ── Fetch ─────────────────────────────────────────────────────────────────
 
@@ -73,6 +79,9 @@ class CoachingController extends AsyncNotifier<List<CoachingInsight>> {
         'generate-coaching',
         body: {'user_id': userId, 'week_start': weekStartStr},
       );
+      AnalyticsService.track('coaching_insights_generated', properties: {
+        'week_start': weekStartStr,
+      });
       // Refresh from DB to get the newly inserted rows.
       state = await AsyncValue.guard(_fetchInsights);
     } catch (e, st) {

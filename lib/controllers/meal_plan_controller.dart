@@ -4,6 +4,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/extensions/date_extensions.dart';
 import '../models/grocery_list.dart';
 import '../models/meal_plan.dart';
+import '../services/analytics_service.dart';
+import 'auth_controller.dart' show authStateProvider;
 
 // ─── MealPlanController ───────────────────────────────────────────────────────
 //
@@ -51,7 +53,11 @@ final mealPlanControllerProvider =
 
 class MealPlanController extends AsyncNotifier<MealPlanState> {
   @override
-  Future<MealPlanState> build() => _loadCurrentWeek();
+  Future<MealPlanState> build() async {
+    final authState = await ref.watch(authStateProvider.future);
+    if (authState.session == null) return const MealPlanState();
+    return _loadCurrentWeek();
+  }
 
   // ── Load ──────────────────────────────────────────────────────────────────
 
@@ -110,6 +116,9 @@ class MealPlanController extends AsyncNotifier<MealPlanState> {
         'generate-meal-plan',
         body: {'user_id': userId, 'week_start': mondayStr},
       );
+      AnalyticsService.track('meal_plan_generated', properties: {
+        'week_start': mondayStr,
+      });
       state = await AsyncValue.guard(_loadCurrentWeek);
     } catch (e) {
       state = AsyncValue.data(
