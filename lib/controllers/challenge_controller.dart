@@ -52,14 +52,26 @@ class MyChallengesNotifier extends AsyncNotifier<List<Challenge>> {
         .eq('user_id', userId)
         .order('joined_at', ascending: false);
 
-    return (rows as List<dynamic>)
+    final all = (rows as List<dynamic>)
         .map((row) {
           final challengeMap =
               row['challenges'] as Map<String, dynamic>? ?? {};
           return Challenge.fromMap(challengeMap);
         })
-        .where((c) => !c.isCompleted)
         .toList();
+
+    // Fire analytics for any challenge that just completed (was active, now past end date).
+    final previousIds = state.valueOrNull?.map((c) => c.id).toSet() ?? {};
+    for (final c in all) {
+      if (c.isCompleted && previousIds.contains(c.id)) {
+        AnalyticsService.track('challenge_completed', properties: {
+          'challenge_id': c.id,
+          'type': c.type.name,
+        });
+      }
+    }
+
+    return all.where((c) => !c.isCompleted).toList();
   }
 
   Future<void> refresh() async {
@@ -138,6 +150,31 @@ class MyChallengesNotifier extends AsyncNotifier<List<Challenge>> {
       AnalyticsService.track('challenge_joined', properties: {
         'method': inviteCode != null ? 'invite_code' : 'direct',
       });
+      await refresh();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Leaves a challenge the user currently participates in.
+  /// Returns `true` on success. Creators cannot leave their own challenges.
+  Future<bool> leave(String challengeId) async {
+    final client = Supabase.instance.client;
+    final userId = client.auth.currentUser?.id;
+    if (userId == null) return false;
+
+    try {
+      await client
+          .from('challenge_participants')
+          .delete()
+          .eq('challenge_id', challengeId)
+          .eq('user_id', userId);
+
+      AnalyticsService.track('challenge_left', properties: {
+        'challenge_id': challengeId,
+      });
+
       await refresh();
       return true;
     } catch (_) {

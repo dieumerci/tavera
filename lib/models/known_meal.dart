@@ -21,6 +21,17 @@ class KnownMeal {
     required this.lastLoggedAt,
   });
 
+  KnownMeal copyWithName(String newName) => KnownMeal(
+        id: id,
+        userId: userId,
+        name: newName,
+        fingerprint: fingerprint,
+        items: items,
+        totalCalories: totalCalories,
+        occurrenceCount: occurrenceCount,
+        lastLoggedAt: lastLoggedAt,
+      );
+
   factory KnownMeal.fromMap(Map<String, dynamic> map) => KnownMeal(
         id: map['id'] as String,
         userId: map['user_id'] as String,

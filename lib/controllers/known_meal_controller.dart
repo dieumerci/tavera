@@ -119,6 +119,23 @@ class KnownMealController extends AsyncNotifier<List<KnownMeal>> {
     }
   }
 
+  // ── Rename a known meal ───────────────────────────────────────────────────
+
+  Future<void> rename(String id, String newName) async {
+    final trimmed = newName.trim();
+    if (trimmed.isEmpty) return;
+    final client = Supabase.instance.client;
+    await client
+        .from('known_meals')
+        .update({'name': trimmed})
+        .eq('id', id);
+    state = AsyncValue.data(
+      (state.valueOrNull ?? [])
+          .map((m) => m.id == id ? m.copyWithName(trimmed) : m)
+          .toList(),
+    );
+  }
+
   // ── Delete a known meal ───────────────────────────────────────────────────
 
   Future<void> delete(String id) async {

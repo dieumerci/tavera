@@ -1085,6 +1085,47 @@ class _KnownMealActionSheet extends StatelessWidget {
           const SizedBox(height: 20),
           ListTile(
             contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.edit_outlined,
+                color: AppColors.textSecondary),
+            title: Text('Rename', style: AppTextStyles.bodyLarge),
+            onTap: () async {
+              HapticService.selection();
+              Navigator.of(context).pop();
+              final ctrl = TextEditingController(text: meal.name as String);
+              final newName = await showDialog<String>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  backgroundColor: AppColors.surface,
+                  title: Text('Rename meal',
+                      style: AppTextStyles.titleMedium),
+                  content: TextField(
+                    controller: ctrl,
+                    autofocus: true,
+                    style: AppTextStyles.bodyLarge,
+                    decoration: const InputDecoration(hintText: 'Meal name'),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(ctx).pop(),
+                      child: const Text('Cancel'),
+                    ),
+                    TextButton(
+                      onPressed: () =>
+                          Navigator.of(ctx).pop(ctrl.text),
+                      child: const Text('Save'),
+                    ),
+                  ],
+                ),
+              );
+              if (newName != null && newName.trim().isNotEmpty) {
+                await ref
+                    .read(knownMealControllerProvider.notifier)
+                    .rename(meal.id as String, newName);
+              }
+            },
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.delete_outline_rounded,
                 color: AppColors.danger),
             title: Text(
