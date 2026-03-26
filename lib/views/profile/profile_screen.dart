@@ -111,10 +111,10 @@ class ProfileScreen extends ConsumerWidget {
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text('Profile'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        // Profile is a root tab — no back button. An explicit leading: null
+        // here prevents GoRouter or the framework from auto-inserting one,
+        // which would call Navigator.pop() and break the shell navigator.
+        automaticallyImplyLeading: false,
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),

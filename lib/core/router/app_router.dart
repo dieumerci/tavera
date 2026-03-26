@@ -84,7 +84,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ],
           ),
 
-          // Tab 2 — Profile
+          // Tab 2 — Social Challenges
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/challenges',
+                pageBuilder: (context, state) => _fadeTransition(
+                  state,
+                  const ChallengesScreen(),
+                ),
+              ),
+            ],
+          ),
+
+          // Tab 3 — Profile
           StatefulShellBranch(
             routes: [
               GoRoute(
@@ -124,15 +137,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => _slideTransition(
           state,
           const CoachingScreen(),
-        ),
-      ),
-
-      // Challenges list: accessed from Profile or challenge strip
-      GoRoute(
-        path: '/challenges',
-        pageBuilder: (context, state) => _slideTransition(
-          state,
-          const ChallengesScreen(),
         ),
       ),
 

@@ -233,6 +233,10 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
 
     final isCapturing = cameraAsync.valueOrNull?.isCapturing ?? false;
     final isProcessing = mealState.isProcessing;
+    // Only show camera UI controls (plate guide, shutter, side buttons) when
+    // the camera is actually ready. Showing them over the permission/rationale
+    // screens would obscure the text and swallow button taps.
+    final camIsReady = cameraAsync.valueOrNull?.isReady ?? false;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -240,7 +244,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // ── Camera preview ──────────────────────────────────────────
+          // ── Camera preview / permission screens ─────────────────────
           cameraAsync.when(
             data: (cam) {
               if (cam.needsExplanation) {
@@ -258,31 +262,35 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
           ),
 
           // ── Viewfinder plate guide ───────────────────────────────────
-          // Subtle circle hints where to frame the meal. Hidden during
-          // processing so it doesn't compete with the overlay spinner.
-          if (!isProcessing)
+          // Only rendered when the live preview is active — never on top of
+          // permission or error screens.
+          if (camIsReady && !isProcessing)
             Positioned.fill(
               child: CustomPaint(painter: _PlateGuidePainter()),
             ),
 
           // ── Capture flash overlay ────────────────────────────────────
-          AnimatedBuilder(
-            animation: _flashAnim,
-            builder: (_, __) => _flashAnim.value > 0
-                ? Opacity(
-                    opacity: _flashAnim.value * 0.7,
-                    child: const ColoredBox(
-                      color: Colors.white,
-                      child: SizedBox.expand(),
-                    ),
-                  )
-                : const SizedBox.shrink(),
-          ),
+          if (camIsReady)
+            AnimatedBuilder(
+              animation: _flashAnim,
+              builder: (_, __) => _flashAnim.value > 0
+                  ? Opacity(
+                      opacity: _flashAnim.value * 0.7,
+                      child: const ColoredBox(
+                        color: Colors.white,
+                        child: SizedBox.expand(),
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
 
           // ── Processing overlay (while AI runs) ───────────────────────
           if (isProcessing) _ProcessingOverlay(stepLabel: mealState.stepLabel),
 
           // ── Top controls ─────────────────────────────────────────────
+          // Close button is always visible so the user can leave the camera
+          // screen even when permission is not granted. Flash toggle only
+          // makes sense when the live preview is active.
           if (!isProcessing)
             SafeArea(
               child: Padding(
@@ -297,23 +305,26 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
                         context.pop();
                       },
                     ),
-                    ScaleTransition(
-                      scale: _chipFlashAnim,
-                      child: _DailyChip(logState: logState, profile: profile),
-                    ),
-                    _GlassButton(
-                      icon: _flashOn
-                          ? Icons.flash_on_rounded
-                          : Icons.flash_off_rounded,
-                      onTap: _toggleFlash,
-                    ),
+                    if (camIsReady) ...[
+                      ScaleTransition(
+                        scale: _chipFlashAnim,
+                        child: _DailyChip(logState: logState, profile: profile),
+                      ),
+                      _GlassButton(
+                        icon: _flashOn
+                            ? Icons.flash_on_rounded
+                            : Icons.flash_off_rounded,
+                        onTap: _toggleFlash,
+                      ),
+                    ] else
+                      const SizedBox.shrink(),
                   ],
                 ),
               ),
             ),
 
-          // ── Side buttons (barcode left, history + quick-add right) ──
-          if (!isProcessing) ...[
+          // ── Side buttons — only when camera is live ──────────────────
+          if (camIsReady && !isProcessing) ...[
             // Barcode scan — mirrors history button on the left
             Positioned(
               top: MediaQuery.of(context).padding.top + 56,
@@ -343,8 +354,8 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
             ),
           ],
 
-          // ── Bottom bar: gallery  |  capture  |  (spacer) ────────────
-          if (!isProcessing)
+          // ── Bottom bar: gallery | capture | water — only when camera live
+          if (camIsReady && !isProcessing)
             Positioned(
               bottom: MediaQuery.of(context).padding.bottom + 32,
               left: 0,

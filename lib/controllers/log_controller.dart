@@ -8,6 +8,7 @@ import '../core/extensions/date_extensions.dart';
 import '../models/food_item.dart';
 import '../models/meal_log.dart';
 import '../models/user_profile.dart';
+import 'auth_controller.dart' show authStateProvider;
 import 'challenge_controller.dart' show myChallengesProvider;
 
 // ── Daily summary state ─────────────────────────────────────────────────────
@@ -74,7 +75,14 @@ DailyLogState _summarise(List<MealLog> logs) {
 
 class LogController extends AsyncNotifier<DailyLogState> {
   @override
-  Future<DailyLogState> build() => _fetchTodayLogs();
+  Future<DailyLogState> build() async {
+    // Watch auth state so this controller rebuilds when the session
+    // arrives on cold start — prevents the dashboard showing empty data
+    // while Supabase is still restoring the session from storage.
+    final authState = await ref.watch(authStateProvider.future);
+    if (authState.session == null) return const DailyLogState();
+    return _fetchTodayLogs();
+  }
 
   Future<DailyLogState> _fetchTodayLogs() async {
     final client = Supabase.instance.client;

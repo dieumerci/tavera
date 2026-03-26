@@ -8,26 +8,39 @@ import '../capture/add_food_sheet.dart';
 // ─── App Shell ────────────────────────────────────────────────────────────────
 //
 // Persistent scaffold wrapper used by StatefulShellRoute. Renders the active
-// tab's child and a bottom navigation bar with a centre FAB that opens the
-// food-capture picker. All navigation state is owned by GoRouter — this widget
-// only translates tap events into branch switches.
+// tab's child and a bottom navigation bar with a floating centre FAB that
+// opens the food-capture picker.
+//
+// Tab layout  (indices match StatefulShellBranch order in app_router.dart):
+//   0 — Home (Dashboard)
+//   1 — History / Nutrition
+//   [FAB notch — not a tab]
+//   2 — Challenges
+//   3 — Profile
+//
+// The FAB is the Scaffold's floatingActionButton placed at centerDocked so
+// Flutter's BottomAppBar automatically carves a matching notch in the bar.
+// All navigation state is owned by GoRouter — this widget only translates
+// tap events into branch switches.
 
 class AppShell extends StatelessWidget {
   final StatefulNavigationShell navigationShell;
   const AppShell({super.key, required this.navigationShell});
 
   void _onTap(int index) {
-    HapticService.selection();
+    // Medium impact on every tab switch — noticeably strong per UX spec.
+    HapticService.medium();
     navigationShell.goBranch(
       index,
-      // When tapping the already-active tab, scroll to top by re-creating
-      // the initial location, which GoRouter handles via key re-use.
+      // When tapping the already-active tab, return to the branch root
+      // (restores scroll position / initial location via GoRouter key reuse).
       initialLocation: index == navigationShell.currentIndex,
     );
   }
 
   void _onAddTapped(BuildContext context) {
-    HapticService.medium();
+    // Heavy impact for the primary action FAB — most emphatic haptic tier.
+    HapticService.heavy();
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -38,58 +51,71 @@ class AppShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final currentIndex = navigationShell.currentIndex;
+    final idx = navigationShell.currentIndex;
     final bottomPad = MediaQuery.of(context).padding.bottom;
 
     return Scaffold(
       backgroundColor: AppColors.background,
       body: navigationShell,
-      bottomNavigationBar: Container(
-        // Nav bar background with top border
-        decoration: const BoxDecoration(
-          color: AppColors.background,
-          border: Border(top: BorderSide(color: AppColors.border)),
-        ),
-        child: SizedBox(
-          height: 60 + bottomPad,
-          child: Padding(
-            padding: EdgeInsets.only(bottom: bottomPad),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                // Home tab
-                _NavItem(
-                  icon: Icons.home_rounded,
-                  label: 'Home',
-                  active: currentIndex == 0,
-                  onTap: () => _onTap(0),
-                ),
 
-                // History / Nutrition tab
-                _NavItem(
-                  icon: Icons.bar_chart_rounded,
-                  label: 'History',
-                  active: currentIndex == 1,
-                  onTap: () => _onTap(1),
-                ),
+      // Floating FAB centred on the BottomAppBar notch.
+      floatingActionButton: _CenterFab(onTap: () => _onAddTapped(context)),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
 
-                // Centre FAB
-                _CenterFab(onTap: () => _onAddTapped(context)),
+      // BottomAppBar carves a notch for the FAB automatically.
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Subtle 1px separator between content and nav bar.
+          Container(height: 1, color: AppColors.border),
+          BottomAppBar(
+            color: AppColors.surface,
+            shape: const CircularNotchedRectangle(),
+            notchMargin: 8.0,
+            // Remove BottomAppBar's default internal padding so our Row
+            // controls all spacing.
+            padding: EdgeInsets.zero,
+            height: 60 + bottomPad,
+            child: Padding(
+              padding: EdgeInsets.only(bottom: bottomPad),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  // Left side — Home & History
+                  _NavItem(
+                    icon: Icons.home_rounded,
+                    label: 'Home',
+                    active: idx == 0,
+                    onTap: () => _onTap(0),
+                  ),
+                  _NavItem(
+                    icon: Icons.bar_chart_rounded,
+                    label: 'History',
+                    active: idx == 1,
+                    onTap: () => _onTap(1),
+                  ),
 
-                // (placeholder slot so FAB stays visually centred)
-                _NavItem(
-                  icon: Icons.person_rounded,
-                  label: 'Profile',
-                  active: currentIndex == 2,
-                  onTap: () => _onTap(2),
-                ),
+                  // Centre gap — reserved for the floating FAB.
+                  const SizedBox(width: 72),
 
-                // Extra invisible spacer to balance 4-slot layout
-                const SizedBox(width: 64),
-              ],
+                  // Right side — Challenges & Profile
+                  _NavItem(
+                    icon: Icons.emoji_events_rounded,
+                    label: 'Challenges',
+                    active: idx == 2,
+                    onTap: () => _onTap(2),
+                  ),
+                  _NavItem(
+                    icon: Icons.person_rounded,
+                    label: 'Profile',
+                    active: idx == 3,
+                    onTap: () => _onTap(3),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -152,6 +178,11 @@ class _NavItem extends StatelessWidget {
 }
 
 // ─── Centre FAB ───────────────────────────────────────────────────────────────
+//
+// Custom floating action button. Rendered as the Scaffold.floatingActionButton
+// at FloatingActionButtonLocation.centerDocked so Flutter automatically creates
+// a matching curved notch in the BottomAppBar. The 56px diameter is the
+// Material Design standard FAB size; BottomAppBar measures it to set the notch.
 
 class _CenterFab extends StatelessWidget {
   final VoidCallback onTap;
@@ -169,10 +200,16 @@ class _CenterFab extends StatelessWidget {
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-              color: AppColors.accent.withValues(alpha: 0.35),
-              blurRadius: 14,
+              color: AppColors.accent.withValues(alpha: 0.40),
+              blurRadius: 20,
               spreadRadius: 0,
               offset: const Offset(0, 4),
+            ),
+            BoxShadow(
+              color: AppColors.accent.withValues(alpha: 0.15),
+              blurRadius: 8,
+              spreadRadius: 2,
+              offset: Offset.zero,
             ),
           ],
         ),

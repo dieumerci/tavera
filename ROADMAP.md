@@ -1,8 +1,8 @@
 # TAVERA — Product Roadmap & Development Checklist
 
-**Document Version:** 1.1
-**Last Updated:** March 24, 2026
-**Status:** Phase 0 Complete · Phase 1 In Progress
+**Document Version:** 1.4
+**Last Updated:** March 26, 2026
+**Status:** Phase 1 Complete · Phase 2 In Progress
 **Author:** Dee (Founder)
 
 > **Legend:** ✅ Complete · 🔄 In Progress · ⏭ Deferred · ❌ Not started
@@ -13,7 +13,9 @@
 
 This roadmap is structured as five sequential phases, each with a clear objective, a definition of done, and a detailed checklist. The phases are designed to be completed by a solo developer or a small team of two to three people. Each phase should take approximately eight to twelve weeks, meaning the full roadmap spans roughly twelve to fifteen months from start to public launch through feature maturity.
 
-The most important principle guiding this roadmap is that Phase 1 must be shipped before any work begins on Phase 2. Feature creep kills solo-developer projects. Phase 1 is deliberately constrained to the minimum product that validates Tavera's core hypothesis: that camera-first calorie logging retains users better than database-search-first logging. If that hypothesis fails, nothing built in Phase 2 through 5 matters.
+The most important principle guiding this roadmap is that Phase 1 must be shipped before any work begins on Phase 2. Feature creep kills solo-developer projects. Phase 1 is deliberately constrained to the minimum product that validates Tavera's core hypothesis: that camera-assisted calorie logging retains users better than database-search-first logging. If that hypothesis fails, nothing built in Phase 2 through 5 matters.
+
+**UX Direction (enforced from Phase 1 onwards):** The app opens to the Dashboard. Food capture is triggered by the + FAB in the bottom navigation bar, not by the camera as a home screen. Steps / activity tracking is explicitly out of scope for all phases unless re-evaluated by the product owner.
 
 ---
 
@@ -42,10 +44,10 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 - ✅ Set up Row-Level Security policies on all tables
 - ✅ Create Supabase Storage bucket `meal-images` with RLS policies
 - [ ] Import USDA FoodData Central dataset into the foods table _(deferred — using OpenAI for nutrition estimation instead of DB lookup in MVP)_
-- [ ] Import Open Food Facts barcode dataset _(deferred — barcode scanning is Phase 1 remaining)_
+- [ ] Import Open Food Facts barcode dataset _(deferred — barcode scanning uses Open Food Facts API directly)_
 - [ ] Create `.env` / `.env.example` files _(keys currently hardcoded in app_config.dart — move to --dart-define before production build)_
 - [ ] Set up Sentry for crash reporting _(Phase 1 remaining)_
-- [ ] Set up Firebase project for FCM push notifications _(Phase 1 remaining)_
+- ✅ Set up Firebase project for FCM push notifications
 - [ ] Register Apple Developer Program account
 - [ ] Register Google Play Developer account
 - ✅ Create the basic app theme (colours, typography, spacing, dark mode)
@@ -56,25 +58,26 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 
 ---
 
-## Phase 1 — Core MVP: Camera-First Calorie Logging (Weeks 3–12)
+## Phase 1 — Core MVP: Dashboard-First Calorie Logging (Weeks 3–12)
 
-**Objective:** Build the complete camera-to-confirmed-meal-log pipeline with AI food recognition, daily calorie dashboard, and meal history. This is the product that goes to beta testers.
+**Objective:** Build the complete food-capture-to-confirmed-meal-log pipeline with AI food recognition, daily calorie dashboard, and meal history. This is the product that goes to beta testers.
 
-**Definition of Done:** A user can open the app, point their camera at a meal, receive AI-generated calorie and macro estimates, confirm the log, and see their daily calorie progress update in real time. The user can review their meal history for the past 30 days.
+**Definition of Done:** A user opens the app to the Dashboard, taps the + button to log a meal (via camera, gallery, barcode, or manual entry), confirms the log, and sees their daily calorie progress update in real time. The user can review their meal history for the past 30 days.
 
-**Status: 🔄 IN PROGRESS — Core pipeline working end-to-end**
+**Status: ✅ COMPLETE**
 
 > **Architecture note:** The MVP uses OpenAI GPT-4o Vision directly for food recognition rather than Google Cloud Vision + USDA database lookup as originally specified. This reduced time-to-working pipeline from weeks to days. The Google Cloud Vision + fuzzy DB-match approach remains the plan for Phase 3 (custom model) once meal photo data is accumulated.
 
 ### Camera & Photo Capture
 
-- ✅ Build the camera capture screen with the `camera` package as the **home screen**
+- ✅ Build the camera capture screen with the `camera` package (accessed via + FAB, not as home screen)
 - ✅ Implement viewfinder overlay with a subtle plate guide circle
 - ✅ Add a capture button with haptic feedback
 - ✅ Implement gallery import fallback via `image_picker`
 - ✅ Build client-side image compression (longest side ≤ 1024px, 85% JPEG quality) — runs in a `compute` isolate to keep UI responsive
 - ✅ Add loading state: white flash on capture, full-screen overlay with step labels ("Uploading photo…" / "Identifying food…"), animated skeleton in review sheet
 - ✅ Handle camera permission requests gracefully with explanation dialogs — branded rationale screen + "Open Settings" deep-link
+- ✅ Camera controls (plate guide, shutter row, side buttons, flash overlay) gated behind `camIsReady` — permission/rationale screens are no longer obscured or unresponsive
 
 ### AI Food Recognition Pipeline
 
@@ -100,17 +103,38 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 - ✅ Calorie total updates in real time as user edits or removes items
 - ✅ Confidence score indicator per food item (green / amber / red dot)
 
-### Daily Dashboard
+### Daily Dashboard (Home Screen)
 
-- ✅ Show today's total calories and logged meal count
-- ✅ Linear calorie progress bar (consumed vs. daily goal)
-- ✅ Build the daily calorie **progress ring** (circular) — `_RingPainter` CustomPainter in `_DailyChip`
-- ✅ Build the macro breakdown bars (protein, carbs, fat) with targets — in history `_SummaryCard`
-- ✅ Show today's logged meals as a scrollable list
-- [ ] Display remaining calories prominently _(partially shown in history screen)_
-- ✅ Add quick-add buttons for water logging (250ml increments) — `_WaterButton` in camera bottom bar
-- ✅ Implement date navigation to view previous days — chevron nav + date picker in history screen
+- ✅ Dashboard is the default home screen — app opens to it on launch
+- ✅ Show daily greeting with user name and today's date
+- ✅ Show daily calorie progress ring (consumed vs. goal, colour-coded: green → amber → red)
+- ✅ Show macro progress bars (Protein, Carbs, Fat) with targets — derived from calorie goal via standard macro splits
+- ✅ Show stat chips row: Calories, Protein, Carbs, Fat with consumed vs. goal
+- ✅ Show today's logged meals as a scrollable list with thumbnails, names, calories, and times
+- ✅ Show water intake card with progress bar and quick +250ml add button
 - ✅ Dashboard updates in real time when a new meal is confirmed (optimistic update)
+- ✅ Empty state shown when no meals logged yet, directing user to the + button
+- [ ] Display weekly calorie trend sparkline _(Phase 2)_
+- [ ] Display AI coaching insight teaser card on dashboard _(Phase 2)_
+- ✅ Dashboard data loads correctly on cold start — `LogController.build()` watches `authStateProvider.future` so it rebuilds once the session is restored from storage (was: empty state on launch)
+
+### Add Food Entry Point (+ FAB)
+
+- ✅ Centre + FAB in bottom navigation bar triggers `AddFoodSheet`
+- ✅ `AddFoodSheet` presents four capture methods: Take Photo, Upload from Gallery, Scan Barcode, Quick Add
+- ✅ Each path wired to its respective pipeline: camera screen, gallery picker + AI, barcode screen, quick add sheet
+- ✅ Paywall gate applied consistently across all four paths
+
+### Bottom Navigation Shell
+
+- ✅ Persistent bottom navigation bar: Home (Dashboard), History, Challenges, Profile, + FAB centre
+- ✅ `StatefulShellRoute.indexedStack` preserves tab scroll state across switches (4 branches: `/`, `/nutrition`, `/challenges`, `/profile`)
+- ✅ Active tab highlighted in accent lime green
+- ✅ Strong haptic feedback on every tab switch — medium impact; FAB uses heavy impact
+- ✅ Challenges promoted to a persistent shell tab (index 2) — no longer a push modal
+- ✅ Floating FAB with glow shadow — `Scaffold.floatingActionButton` + `FloatingActionButtonLocation.centerDocked` + `BottomAppBar(CircularNotchedRectangle)` notch
+- ✅ Camera and barcode screens are full-screen modals (no bottom nav visible)
+- ✅ Profile AppBar uses `automaticallyImplyLeading: false` — removing the back button that was crashing navigation in tab context
 
 ### Meal History
 
@@ -137,9 +161,23 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 
 - ✅ Implement meal-time push notification scheduling based on user timezone — `NotificationService` with timezone-aware `zonedSchedule`
 - ✅ Default reminders at 8am (breakfast), 12:30pm (lunch), 7pm (dinner)
-- ✅ Smart suppression: do not send notification if a meal has already been logged in that window — `ref.listen` on `logControllerProvider` reschedules after every log change
-- ✅ Implement notification permission request — toggle in Profile → Notifications section; FCM wraps APNs on iOS
-- [ ] Handle notification taps to deep link directly to the camera screen _(app opens to camera by default; explicit deep-link routing deferred)_
+- ✅ Smart suppression: do not send notification if a meal has already been logged in that window
+- ✅ Implement notification permission request — toggle in Profile → Notifications section
+- [ ] Handle notification taps to deep link directly to the dashboard _(deferred)_
+
+### Haptic Feedback
+
+- ✅ `LabeledTextField` fires `HapticFeedback.selectionClick()` on every focus event
+- ✅ All profile screen tile taps trigger selection haptic
+- ✅ Goal preset chips trigger selection haptic
+- ✅ Sex selection trigger selection haptic
+- ✅ Macro toggle in quick-add fires selection haptic
+- ✅ Successful meal save fires medium impact haptic
+- ✅ Bottom nav tab switches fire selection haptic
+- ✅ Centre + FAB fires medium impact haptic
+- ✅ Water quick-add fires light impact haptic
+- ✅ Camera capture fires medium impact haptic (pre-existing)
+- ✅ Water intake persisted to `daily_stats` in Supabase — survives restarts, syncs across devices; UI updates are instant (optimistic), DB writes debounced 500ms to collapse rapid taps
 
 ### Offline Mode
 
@@ -155,14 +193,14 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 - ✅ Sign out flow
 - ✅ Add calorie target editor — `_GoalEditorSheet` with preset chips + slider 1200–4000 kcal
 - ✅ Add body stats input (height, weight, age, sex) for BMR-based target calculation — Mifflin-St Jeor × 1.2
-- [ ] Implement account deletion flow (data export, then delete)
+- ✅ Implement account deletion flow — `delete-account` Edge Function with paginated Storage cleanup (batches of 1000), profile cascade delete, irreversible `auth.admin.deleteUser` last; returns `success: false` if auth row deletion fails to prevent orphaned-email re-signup
 - [ ] Add notification preference controls
 
 ### Testing & Quality
 
 - ✅ Unit tests for `FoodItem` and `MealLog` models (serialisation round-trip)
 - [ ] Unit tests for all repository classes
-- [ ] Widget tests for camera, meal review, and history screens
+- [ ] Widget tests for dashboard, meal review, and history screens
 - [ ] Integration tests for the full camera-to-log pipeline
 - [ ] Manual testing on at least three physical devices (1 iOS, 2 Android)
 - [ ] Load test the Edge Function with 100 concurrent requests
@@ -181,18 +219,20 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 
 ## Phase 2 — Intelligence Layer & Monetisation (Weeks 13–22)
 
-**Objective:** Add adaptive meal memory, coaching insights, premium subscription, and paywall. This is the phase where Tavera becomes a business.
+**Objective:** Add adaptive meal memory, coaching insights, premium subscription, paywall, and two high-value retention features: Social Accountability Challenges and AI Meal Planner with Grocery Integration. This is the phase where Tavera becomes a business and a habit.
 
-**Status: ❌ NOT STARTED**
+**Status: 🔄 IN PROGRESS**
 
-> **Partially scaffolded:** Paywall sheet UI is built. Free-tier 3-log/day gate is enforced in `LogController`. `known_meals` table is in the database schema. These are intentionally stubbed ahead of time without blocking Phase 1.
+> **Infrastructure complete (March 26, 2026):** Challenges tab wired to shell nav (Tab 2). Floating FAB with notch. Strong haptics. Account deletion Edge Function live. Challenge scoring (`challenge-notifier`) wired to all log paths. Water intake persisted to `daily_stats`. Dashboard cold-start data loading fixed. Camera permission screen fixed. Profile back-button crash fixed. Paywall sheet helper + Meal Planner / Challenges features added. `DateFormatting.toIsoDateString()` extension centralised.
+
+> **Subscription & Paywall flexibility note:** The monetisation model and paywall placement are not yet finalised. The architecture must remain flexible enough to support different models (freemium, hard paywall, trial-first) without requiring significant rewrites. Gate features behind a capabilities check that abstracts away the specific model. RevenueCat is the planned payment layer; it supports model changes at the product configuration level.
 
 ### Adaptive Meal Memory
 
 - [ ] Write the known meal detection query: identify meals logged 3+ times with similar food item combinations
 - [ ] Build the known_meals table population logic (scheduled PostgreSQL function or Edge Function running daily)
 - [ ] Implement time-of-day bucketing so known meals are offered at the right time
-- [ ] Build the known meals suggestion UI: horizontal scrollable chips above the camera button
+- [ ] Build the known meals suggestion row on the Dashboard — horizontal scrollable chips
 - [ ] Implement one-tap logging for known meals (confirm with single tap, no camera needed)
 - [ ] Allow users to rename known meals
 - [ ] Allow users to dismiss or hide known meals they no longer eat
@@ -207,26 +247,93 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 - [ ] Schedule the Edge Function to run weekly (Monday morning per user timezone)
 - [ ] Build the insights screen in the Flutter app
 - [ ] Implement read/unread state for insights
+- [ ] Add a teaser insight card on the Dashboard for premium users
 - [ ] Add a badge indicator on the insights tab when new insights are available
 
 ### Subscription & Paywall
 
+> Architecture must support multiple monetisation models without a rewrite. See PRICING.md for the current plan. Build the capability layer first; wire the specific model second.
+
 - [ ] Create a RevenueCat account and configure products
 - [ ] Create subscription products in App Store Connect and Google Play Console
-- [ ] Configure monthly ($4.99/month) and annual options _(pricing per PRICING.md)_
+- [ ] Configure monthly and annual subscription options (pricing per PRICING.md)
 - [ ] Implement 7-day free trial for annual plan
 - [ ] Integrate `purchases_flutter` (RevenueCat SDK)
+- [ ] Implement a `SubscriptionService` abstraction layer — all feature gates query this service, not RevenueCat directly, so the monetisation model can change without touching feature code
 - [ ] Wire the existing `PaywallSheet` UI to RevenueCat purchase flow
 - [ ] Implement subscription status checking on app launch and cache locally
-- [ ] Gate premium features: coaching insights, adaptive meal memory, macro tracking, history export
+- [ ] Gate premium features: coaching insights, adaptive meal memory, macro tracking, history export, Social Challenges (leaderboards), AI Meal Planner
 - [ ] Implement subscription restoration for users who reinstall the app
 - [ ] Set up RevenueCat webhooks → Supabase Edge Function for subscription status sync
 - [ ] Test purchase flows on both platforms with sandbox/test accounts
 
+### Social Accountability Challenges
+
+> **Product intent:** Retention, motivation, and virality layer. Users create or join group nutrition and health challenges with friends. AI tracks progress, sends motivating notifications, generates leaderboards, and produces shareable visual infographics summarising the user's journey. Examples: 7-Day Protein Challenge, No Sugar Week.
+
+#### Database schema additions
+- [ ] Add `challenges` table: id, creator_id, title, description, goal_type (enum: protein_target, calorie_range, consecutive_days, custom), start_date, end_date, is_public, invite_code
+- [ ] Add `challenge_participants` table: challenge_id, user_id, joined_at, current_streak, total_score, rank
+- [ ] Add `challenge_events` table: challenge_id, user_id, event_type, payload, created_at (for AI progress tracking)
+
+#### Core challenge flow
+- [ ] Build challenge creation screen: title, goal type, duration, invite method (link / QR code)
+- [ ] Build challenge discovery / join screen: join by invite code or browse public challenges
+- [ ] Build challenge detail screen: goal description, participant list, leaderboard, days remaining
+- [ ] Implement automatic progress tracking: wire meal logs to challenge goal checks via Edge Function
+- [ ] Build leaderboard card: rank, avatar, username, score/streak — updates daily
+- [ ] Display challenge progress card on Dashboard during active challenges
+
+#### AI motivational notifications
+- ✅ Write Edge Function `challenge-notifier` — wired to both `directLogMeal` and `MealController.confirmAndSave()`; fire-and-forget with `onComplete` callback to invalidate `myChallengesProvider` leaderboard cache; guarded by `hasChallenges` check to skip the network call when the user has no active challenges
+- [ ] Generate personalised motivational messages using OpenAI (progress-aware, not generic)
+- [ ] Send push notifications: milestone achievements, streak alerts, friendly competitive nudges
+- [ ] Notification suppression: respect the user's meal-time suppression windows
+
+#### Social sharing & infographics
+- [ ] Build auto-generated completion infographic: challenge name, user stats, rank, best day, streak
+- [ ] Implement share-to-social flow (iOS Share Sheet / Android Share Intent)
+- [ ] Badge system: challenge badges shown on profile screen
+- [ ] Implement achievement unlock notifications with celebratory animation
+
+#### Phase 2 Social Challenges scope
+- [ ] Maximum 10 participants per challenge in Phase 2 (scale limits deferred)
+- [ ] Challenge types limited to: daily protein target, daily calorie range, consecutive logging streak
+- [ ] Custom challenge types deferred to Phase 3
+
+### AI Meal Planner with Grocery Integration
+
+> **Product intent:** After a user has tracked meals for at least one week, the AI generates a personalised weekly meal plan based on their eating patterns, nutritional gaps, goals, and behaviour trends. Includes automatic grocery list creation with exact quantities. Architecture must support grocery delivery API integration (Instacart, Amazon Fresh) as a Phase 3 enhancement.
+
+#### Data prerequisites
+- [ ] Minimum 7 days of meal logs required before meal plan generation is offered (enforced in UI and Edge Function)
+- [ ] Build meal pattern analyser Edge Function `analyse-eating-patterns`: identify favourite ingredients, meal timing, typical portion sizes, nutritional gaps
+
+#### Meal plan generation
+- [ ] Write Edge Function `generate-meal-plan`:
+  - Input: user profile, calorie goal, macro targets, eating patterns, top 20 logged ingredients, dietary restrictions
+  - Output: 7-day meal plan (3 meals + 1 snack per day), each meal with name, ingredients, quantities, calories, macros
+- [ ] Design OpenAI prompt template: emphasise pattern continuity (similar ingredients to what user already eats), nutritional gap filling, practical meal prep time
+- [ ] Build meal plan display screen: week view with day tabs, each meal expandable
+- [ ] Implement meal plan regeneration: "Regenerate day" and "Regenerate week" actions
+- [ ] Allow individual meal swaps: tap a meal → AI suggests 3 alternatives
+
+#### Grocery list
+- [ ] Build grocery list generator from confirmed meal plan: aggregate ingredients across all meals, de-duplicate, sum quantities
+- [ ] Grocery list grouped by category: Produce, Protein, Dairy, Pantry, Frozen
+- [ ] Check-off UI: tap to mark items purchased, persists state locally
+- [ ] Edit quantities and add/remove items manually
+- [ ] Export grocery list as plain text (share sheet)
+
+#### Grocery delivery integration (architecture only in Phase 2 — live integration Phase 3)
+- [ ] Design `GroceryDeliveryService` abstract interface with: `isAvailable()`, `addItemsToCart(items)`, `openCheckout()`
+- [ ] No live integration in Phase 2 — stub the interface and add a "Connect to delivery service" placeholder in the grocery list screen
+- [ ] Phase 3 will implement `InstacartDeliveryService` and `AmazonFreshDeliveryService` concretely
+
 ### Analytics
 
 - [ ] Set up PostHog and integrate `posthog_flutter`
-- [ ] Track key events: meal_logged, camera_opened, known_meal_used, paywall_shown, subscription_started
+- [ ] Track key events: meal_logged, camera_opened, known_meal_used, paywall_shown, subscription_started, challenge_joined, challenge_completed, meal_plan_generated, grocery_list_opened
 - [ ] Build conversion funnel from onboarding → first log → day 7 retention → subscription
 
 ### Public Launch
@@ -246,7 +353,7 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 ### Checklist
 
 - [ ] Build the restaurant menu scanning feature
-- [ ] Integrate Apple HealthKit and Google Health Connect for activity data import
+- [ ] Integrate Apple HealthKit and Google Health Connect for activity data import (Note: step counting explicitly excluded; focus on calorie burn from workouts and heart rate)
 - [ ] Implement dynamic calorie budget adjustment based on imported activity data
 - [ ] Build the meal scoring system: green/yellow/red rating per meal based on goal alignment
 - [ ] Implement consistency streaks that reward logging frequency
@@ -256,22 +363,24 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 - [ ] Add multi-language support starting with Spanish, Portuguese, French, and Hindi
 - [ ] Evaluate Google Cloud Vision + USDA database lookup to replace or supplement OpenAI Vision
 - [ ] Optimise app launch time to under 2 seconds on mid-range devices
+- [ ] Expand Social Challenges: custom challenge types, up to 50 participants, public challenge discovery
+- [ ] Implement `InstacartDeliveryService` and `AmazonFreshDeliveryService` grocery integrations
 
 ---
 
-## Phase 4 — Meal Planning & Social (Weeks 35–46)
+## Phase 4 — Meal Planning Maturity & Social Scale (Weeks 35–46)
 
 **Status: ❌ NOT STARTED**
 
 ### Checklist
 
-- [ ] Build the AI meal planning engine from the user's known meals
+- [ ] Mature the AI meal planning engine: multi-week plans, plan history, personalisation feedback loop
 - [ ] Implement meal plan editing: swap meals, adjust portions, regenerate days
-- [ ] Generate grocery lists from meal plans
-- [ ] Build the accountability partner feature: invite one person to see your daily summary
+- [ ] Build the accountability partner feature: invite one person to see your daily summary (deeper than group challenges)
 - [ ] Add GLP-1 medication tracking mode with protein-prioritised coaching
 - [ ] Build the recipe import feature: paste a URL, extract ingredients, calculate nutrition
 - [ ] Implement food photo quality feedback loop to improve AI accuracy
+- [ ] Scale Social Challenges: viral leaderboard sharing, cross-app deep links, challenge templates library
 
 ---
 
@@ -298,34 +407,34 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 |-----------|-------------|-------|--------|
 | Project scaffolding complete | Week 2 | 0 | ✅ Done (Week 1) |
 | Camera-to-calorie pipeline working end-to-end | Week 6 | 1 | ✅ Done (Week 1) |
-| Image compression + permission dialogs | Week 3 | 1 | 🔄 In Progress |
-| Portion slider + manual add + success animation | Week 4 | 1 | 🔄 In Progress |
+| Dashboard-first UX + bottom nav shell | Week 3 | 1 | ✅ Done |
+| Haptic feedback system-wide | Week 3 | 1 | ✅ Done |
 | Beta release to 20–50 testers | Week 10 | 1 | ❌ |
 | Beta feedback incorporated, MVP stable | Week 12 | 1 | ❌ |
 | Adaptive meal memory live | Week 16 | 2 | ❌ |
+| Social Accountability Challenges — MVP | Week 18 | 2 | ❌ |
 | Subscription and paywall live | Week 18 | 2 | ❌ |
+| AI Meal Planner + grocery list | Week 20 | 2 | ❌ |
 | Public launch on App Store and Google Play | Week 22 | 2 | ❌ |
 | 1,000 registered users | Week 26 | 3 | ❌ |
 | Restaurant menu scanning live | Week 28 | 3 | ❌ |
-| Wearable integration live | Week 30 | 3 | ❌ |
-| Meal planning engine live | Week 38 | 4 | ❌ |
+| Grocery delivery integration (Instacart) | Week 30 | 3 | ❌ |
+| Meal planning engine mature | Week 38 | 4 | ❌ |
 | 10,000 registered users | Week 40 | 4 | ❌ |
 | Professional accounts live | Week 50 | 5 | ❌ |
 | First corporate wellness pilot | Week 55 | 5 | ❌ |
 
 ---
 
-## Immediate Next Actions (Phase 1 — Sprint)
+## Immediate Next Actions (Phase 2 — Sprint)
 
-These are the next concrete engineering tasks before beta:
-
-1. ✅ **Image compression** — `compute` isolate resizes to longest side ≤ 1024px at 85% JPEG before upload
-2. ✅ **Gallery import** — `image_picker` fallback button left of the shutter; same paywall gate and AI pipeline as camera capture
-3. ✅ **Portion slider** — inline on each `FoodItemCard`, 0.5× to 3× in 0.5× steps, real-time calorie preview, commits to controller on drag-end
-4. ✅ **Success animation** — calorie chip scale-bounce (elastic spring) when meal is saved
-5. ✅ **Camera permission dialog** — branded explanation screen + "Open Settings" deep-link; "try again" re-runs check without restart
-6. ✅ **Calorie target onboarding** — goal-picker step after sign-up (preset chips + fine-tune slider 1200–4000 kcal); editable in Profile
-7. ✅ **Environment variables** — `Env` class reads `--dart-define` at compile time with dev fallbacks; `AppConfig` delegates to `Env`
+1. **Social Challenges DB schema** — write and apply migration for `challenges`, `challenge_participants`, `challenge_events` (Edge Function wiring already done — unblocks full leaderboard)
+2. **Challenge creation & discovery screens** — creation form, join-by-invite-code flow, leaderboard card
+3. **RevenueCat setup** — create products in App Store Connect and Google Play Console, integrate SDK, build `SubscriptionService` abstraction
+4. **Adaptive meal memory** — known meal detection query + suggestion chips on Dashboard
+5. **PostHog analytics** — integrate `posthog_flutter`, wire key events
+6. **Meal plan analyser Edge Function** — `analyse-eating-patterns` prerequisite for the meal planner
+7. **Beta testing setup** — TestFlight + Google Play Internal Testing track
 
 ---
 
