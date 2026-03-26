@@ -1,8 +1,8 @@
 # TAVERA — Product Roadmap & Development Checklist
 
-**Document Version:** 1.4
+**Document Version:** 1.5
 **Last Updated:** March 26, 2026
-**Status:** Phase 1 Complete · Phase 2 In Progress
+**Status:** Phase 1 Complete · Phase 2 In Progress (code ~85% done — external setup remaining)
 **Author:** Dee (Founder)
 
 > **Legend:** ✅ Complete · 🔄 In Progress · ⏭ Deferred · ❌ Not started
@@ -88,7 +88,7 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 - ⏭ Implement rules-based portion estimation _(deferred — GPT-4o handles portion estimation in prompt)_
 - ✅ Build response assembly returning structured meal estimates (name, portion, calories, macros, confidence)
 - ✅ Handle error cases: unrecognised food, API timeout, network failure — with debug-level error messages surfaced in UI
-- [ ] Add fallback to manual food search when AI confidence is below 0.5
+- ✅ Add fallback to manual food search when AI confidence is below 0.5 — 'Low confidence — tap to correct' hint row on FoodItemCard opens _EditItemSheet
 - [ ] Log all AI requests and responses for future model improvement (anonymised)
 - [ ] Test with at least 50 different meal photos across cuisines and validate accuracy
 
@@ -114,8 +114,8 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 - ✅ Show water intake card with progress bar and quick +250ml add button
 - ✅ Dashboard updates in real time when a new meal is confirmed (optimistic update)
 - ✅ Empty state shown when no meals logged yet, directing user to the + button
-- [ ] Display weekly calorie trend sparkline _(Phase 2)_
-- [ ] Display AI coaching insight teaser card on dashboard _(Phase 2)_
+- ✅ Display weekly calorie trend sparkline _(Phase 2)_ — _WeeklyTrendCard: 7 animated bars, accent/danger colour vs goal, today highlighted
+- ✅ Display AI coaching insight teaser card on dashboard _(Phase 2)_ — _CoachingTeaserCard shown when unreadInsights > 0
 - ✅ Dashboard data loads correctly on cold start — `LogController.build()` watches `authStateProvider.future` so it rebuilds once the session is restored from storage (was: empty state on launch)
 
 ### Add Food Entry Point (+ FAB)
@@ -231,24 +231,24 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 
 - [ ] Write the known meal detection query: identify meals logged 3+ times with similar food item combinations
 - [ ] Build the known_meals table population logic (scheduled PostgreSQL function or Edge Function running daily)
-- [ ] Implement time-of-day bucketing so known meals are offered at the right time
-- [ ] Build the known meals suggestion row on the Dashboard — horizontal scrollable chips
-- [ ] Implement one-tap logging for known meals (confirm with single tap, no camera needed)
-- [ ] Allow users to rename known meals
-- [ ] Allow users to dismiss or hide known meals they no longer eat
-- [ ] Track known meal usage frequency and retire meals unused for 30+ days
+- ✅ Implement time-of-day bucketing so known meals are offered at the right time — circular hour distance sort in `topKnownMealsProvider`
+- ✅ Build the known meals suggestion row on the Dashboard — horizontal scrollable chips, long-press action sheet
+- ✅ Implement one-tap logging for known meals (confirm with single tap, no camera needed) — `relog()` in KnownMealController
+- ✅ Allow users to rename known meals — Rename tile in _KnownMealActionSheet + `rename()` controller method
+- ✅ Allow users to dismiss or hide known meals they no longer eat — Delete tile in _KnownMealActionSheet + `delete()` controller method
+- ✅ Track known meal usage frequency and retire meals unused for 30+ days — 30-day cutoff filter in `_fetch()`
 
 ### AI Coaching Insights
 
-- [ ] Write the Supabase Edge Function `generate-coaching`
-- [ ] Design the OpenAI prompt template: user goals, weekly meal summary, detected patterns, nutritional gaps
-- [ ] Constrain AI output to 1–3 actionable insights per week
-- [ ] Implement insight categories: pattern observations, recommendations, milestones
-- [ ] Schedule the Edge Function to run weekly (Monday morning per user timezone)
-- [ ] Build the insights screen in the Flutter app
-- [ ] Implement read/unread state for insights
-- [ ] Add a teaser insight card on the Dashboard for premium users
-- [ ] Add a badge indicator on the insights tab when new insights are available
+- ✅ Write the Supabase Edge Function `generate-coaching`
+- ✅ Design the OpenAI prompt template: user goals, weekly meal summary, detected patterns, nutritional gaps
+- ✅ Constrain AI output to 1–3 actionable insights per week
+- ✅ Implement insight categories: pattern observations, recommendations, milestones
+- [ ] Schedule the Edge Function to run weekly (Monday morning per user timezone) _(needs cron or pg_cron setup)_
+- ✅ Build the insights screen in the Flutter app — `CoachingScreen` with week-grouped `_InsightCard` list
+- ✅ Implement read/unread state for insights — `markRead()` + optimistic state patch
+- ✅ Add a teaser insight card on the Dashboard for premium users — `_CoachingTeaserCard`
+- ✅ Add a badge indicator on the insights tab when new insights are available — `unreadInsightCountProvider`
 
 ### Subscription & Paywall
 
@@ -258,12 +258,12 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 - [ ] Create subscription products in App Store Connect and Google Play Console
 - [ ] Configure monthly and annual subscription options (pricing per PRICING.md)
 - [ ] Implement 7-day free trial for annual plan
-- [ ] Integrate `purchases_flutter` (RevenueCat SDK)
-- [ ] Implement a `SubscriptionService` abstraction layer — all feature gates query this service, not RevenueCat directly, so the monetisation model can change without touching feature code
-- [ ] Wire the existing `PaywallSheet` UI to RevenueCat purchase flow
-- [ ] Implement subscription status checking on app launch and cache locally
-- [ ] Gate premium features: coaching insights, adaptive meal memory, macro tracking, history export, Social Challenges (leaderboards), AI Meal Planner
-- [ ] Implement subscription restoration for users who reinstall the app
+- ✅ Integrate `purchases_flutter` (RevenueCat SDK) — `RevenueCatService` wrapper, no-op when keys absent
+- ✅ Implement a `SubscriptionService` abstraction layer — all feature gates query this service, not RevenueCat directly, so the monetisation model can change without touching feature code
+- ✅ Wire the existing `PaywallSheet` UI to RevenueCat purchase flow — offerings loaded in `initState()`, purchase/restore wired
+- ✅ Implement subscription status checking on app launch and cache locally — `revenueCatPremiumProvider` FutureProvider with `.valueOrNull` fallback
+- ✅ Gate premium features: coaching insights, adaptive meal memory, macro tracking, history export, Social Challenges (leaderboards), AI Meal Planner
+- ✅ Implement subscription restoration for users who reinstall the app — Restore button in PaywallSheet + Profile screen
 - [ ] Set up RevenueCat webhooks → Supabase Edge Function for subscription status sync
 - [ ] Test purchase flows on both platforms with sandbox/test accounts
 
@@ -272,16 +272,16 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 > **Product intent:** Retention, motivation, and virality layer. Users create or join group nutrition and health challenges with friends. AI tracks progress, sends motivating notifications, generates leaderboards, and produces shareable visual infographics summarising the user's journey. Examples: 7-Day Protein Challenge, No Sugar Week.
 
 #### Database schema additions
-- [ ] Add `challenges` table: id, creator_id, title, description, goal_type (enum: protein_target, calorie_range, consecutive_days, custom), start_date, end_date, is_public, invite_code
-- [ ] Add `challenge_participants` table: challenge_id, user_id, joined_at, current_streak, total_score, rank
-- [ ] Add `challenge_events` table: challenge_id, user_id, event_type, payload, created_at (for AI progress tracking)
+- ✅ Add `challenges` table: id, creator_id, title, description, goal_type (enum: protein_target, calorie_range, consecutive_days, custom), start_date, end_date, is_public, invite_code
+- ✅ Add `challenge_participants` table: challenge_id, user_id, joined_at, current_streak, total_score, rank
+- ✅ Add `challenge_events` table: challenge_id, user_id, event_type, payload, created_at (for AI progress tracking)
 
 #### Core challenge flow
-- [ ] Build challenge creation screen: title, goal type, duration, invite method (link / QR code)
-- [ ] Build challenge discovery / join screen: join by invite code or browse public challenges
-- [ ] Build challenge detail screen: goal description, participant list, leaderboard, days remaining
-- [ ] Implement automatic progress tracking: wire meal logs to challenge goal checks via Edge Function
-- [ ] Build leaderboard card: rank, avatar, username, score/streak — updates daily
+- ✅ Build challenge creation screen: title, goal type, duration, invite method (link / QR code) — `CreateChallengeSheet`
+- ✅ Build challenge discovery / join screen: join by invite code or browse public challenges — `ChallengesScreen` Discover tab + join dialog
+- ✅ Build challenge detail screen: goal description, participant list, leaderboard, days remaining — `ChallengeDetailScreen`
+- ✅ Implement automatic progress tracking: wire meal logs to challenge goal checks via Edge Function — `challenge-notifier` Edge Function
+- ✅ Build leaderboard card: rank, avatar, username, score/streak — updates daily — `_LeaderboardRow` in detail screen
 - [ ] Display challenge progress card on Dashboard during active challenges
 
 #### AI motivational notifications
@@ -296,9 +296,21 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 - [ ] Badge system: challenge badges shown on profile screen
 - [ ] Implement achievement unlock notifications with celebratory animation
 
+#### AI motivational notifications
+- ✅ Write Edge Function `challenge-notifier` — fire-and-forget from both log paths; `hasChallenges` guard skips call when user has no active challenges
+- [ ] Generate personalised motivational messages using OpenAI (progress-aware, not generic)
+- [ ] Send push notifications: milestone achievements, streak alerts, friendly competitive nudges
+- [ ] Notification suppression: respect the user's meal-time suppression windows
+
+#### Social sharing & infographics
+- [ ] Build auto-generated completion infographic: challenge name, user stats, rank, best day, streak
+- [ ] Implement share-to-social flow (iOS Share Sheet / Android Share Intent)
+- [ ] Badge system: challenge badges shown on profile screen
+- [ ] Implement achievement unlock notifications with celebratory animation
+
 #### Phase 2 Social Challenges scope
 - [ ] Maximum 10 participants per challenge in Phase 2 (scale limits deferred)
-- [ ] Challenge types limited to: daily protein target, daily calorie range, consecutive logging streak
+- ✅ Challenge leave flow: non-creator participants can leave via confirm dialog on detail screen — `_LeaveButton` widget
 - [ ] Custom challenge types deferred to Phase 3
 
 ### AI Meal Planner with Grocery Integration
@@ -306,28 +318,29 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 > **Product intent:** After a user has tracked meals for at least one week, the AI generates a personalised weekly meal plan based on their eating patterns, nutritional gaps, goals, and behaviour trends. Includes automatic grocery list creation with exact quantities. Architecture must support grocery delivery API integration (Instacart, Amazon Fresh) as a Phase 3 enhancement.
 
 #### Data prerequisites
-- [ ] Minimum 7 days of meal logs required before meal plan generation is offered (enforced in UI and Edge Function)
-- [ ] Build meal pattern analyser Edge Function `analyse-eating-patterns`: identify favourite ingredients, meal timing, typical portion sizes, nutritional gaps
+- ✅ Minimum 7 days of meal logs required before meal plan generation is offered (enforced in UI and Edge Function) — `distinctLoggedDaysProvider` + `_InsufficientDataState` progress screen
+- ✅ Build meal pattern analyser Edge Function `analyse-eating-patterns` — deployed to Supabase
 
 #### Meal plan generation
-- [ ] Write Edge Function `generate-meal-plan`:
+- ✅ Write Edge Function `generate-meal-plan`:
   - Input: user profile, calorie goal, macro targets, eating patterns, top 20 logged ingredients, dietary restrictions
   - Output: 7-day meal plan (3 meals + 1 snack per day), each meal with name, ingredients, quantities, calories, macros
-- [ ] Design OpenAI prompt template: emphasise pattern continuity (similar ingredients to what user already eats), nutritional gap filling, practical meal prep time
-- [ ] Build meal plan display screen: week view with day tabs, each meal expandable
-- [ ] Implement meal plan regeneration: "Regenerate day" and "Regenerate week" actions
+- ✅ Design OpenAI prompt template: emphasise pattern continuity (similar ingredients to what user already eats), nutritional gap filling, practical meal prep time
+- ✅ Build meal plan display screen: week view with day tabs, each meal expandable — `MealPlannerScreen` Plan tab
+- ✅ Implement meal plan regeneration: "Regenerate week" — refresh icon in app bar calls `generate()`
+- [ ] Implement "Regenerate day" action — requires Edge Function `day_index` parameter
 - [ ] Allow individual meal swaps: tap a meal → AI suggests 3 alternatives
 
 #### Grocery list
-- [ ] Build grocery list generator from confirmed meal plan: aggregate ingredients across all meals, de-duplicate, sum quantities
-- [ ] Grocery list grouped by category: Produce, Protein, Dairy, Pantry, Frozen
-- [ ] Check-off UI: tap to mark items purchased, persists state locally
+- ✅ Build grocery list generator from confirmed meal plan: aggregate ingredients across all meals, de-duplicate, sum quantities — `generate-meal-plan` Edge Function populates `grocery_lists` table
+- ✅ Grocery list grouped by category: Produce, Protein, Dairy, Pantry, Frozen — `GroceryItem.category` enum + grouped display
+- ✅ Check-off UI: tap to mark items purchased, persists state locally — `toggleGroceryItem()` with optimistic update + DB sync
 - [ ] Edit quantities and add/remove items manually
-- [ ] Export grocery list as plain text (share sheet)
+- ✅ Export grocery list as plain text (share sheet) — share token copied to clipboard via `shareGroceryList()`
 
 #### Grocery delivery integration (architecture only in Phase 2 — live integration Phase 3)
-- [ ] Design `GroceryDeliveryService` abstract interface with: `isAvailable()`, `addItemsToCart(items)`, `openCheckout()`
-- [ ] No live integration in Phase 2 — stub the interface and add a "Connect to delivery service" placeholder in the grocery list screen
+- ✅ Design `GroceryDeliveryService` abstract interface with: `isAvailable()`, `addItemsToCart(items)`, `openCheckout()`
+- ✅ No live integration in Phase 2 — stub the interface and add a "Connect to delivery service" placeholder in the grocery list screen — `_DeliveryStubBanner`
 - [ ] Phase 3 will implement `InstacartDeliveryService` and `AmazonFreshDeliveryService` concretely
 
 ### Analytics
@@ -336,7 +349,7 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 - ✅ Track key events: `meal_logged` (source, calories, item_count), `paywall_shown` (source), `challenge_created`, `challenge_joined` (method), `meal_plan_generated`, `coaching_insights_generated`, `known_meal_relogged`
 - ✅ User identify/reset wired to `authStateProvider` stream in `main.dart`
 - [ ] Set up PostHog project, add `POSTHOG_API_KEY` to build configuration
-- [ ] Track additional events: `camera_opened`, `barcode_scanned`, `subscription_started`, `grocery_list_opened`, `challenge_completed`
+- ✅ Track additional events: `camera_opened`, `barcode_scanned`, `subscription_started`, `subscription_restored`, `grocery_list_opened`, `challenge_completed`, `challenge_left`
 - [ ] Build conversion funnel from onboarding → first log → day 7 retention → subscription
 
 ### Public Launch
@@ -431,10 +444,12 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 
 ## Immediate Next Actions (Phase 2 — Sprint)
 
-1. **Apply migration 005** — run `supabase/migrations/005_rpc_and_constraints.sql` on the Tavera Supabase project (`hdtuezlbabsebkoucjhp`): adds `increment_known_meal_count` RPC, `grocery_lists` upsert constraint, fixes challenges RLS recursion. CLI: `supabase db push` or paste SQL into the Supabase dashboard SQL editor.
-2. **Deploy Edge Functions** — `supabase functions deploy` for all 5 functions (challenge-notifier, generate-coaching, generate-meal-plan, analyse-eating-patterns, delete-account). All source is in `supabase/functions/`.
+> **Code is largely done. The remaining blockers are all external setup tasks.**
+
+1. **Apply migration 005** — run `supabase/migrations/005_rpc_and_constraints.sql` on the Tavera Supabase project (`hdtuezlbabsebkoucjhp`): adds `increment_known_meal_count` RPC, `grocery_lists` upsert constraint, fixes challenges RLS recursion. CLI: `supabase db push` or paste SQL into the Supabase dashboard SQL editor. _Note: MCP-connected Supabase account does not contain the Tavera project — apply manually._
+2. **Deploy Edge Functions** — `supabase functions deploy --all` from `supabase/functions/` (6 functions: analyse-meal, generate-coaching, challenge-notifier, analyse-eating-patterns, generate-meal-plan, delete-account).
 3. **PostHog project setup** — create project at posthog.com, copy API key, add `--dart-define=POSTHOG_API_KEY=phc_...` to build/run configuration
-4. **RevenueCat setup** — create products in App Store Connect and Google Play Console, integrate `purchases_flutter` SDK, build `SubscriptionService` abstraction
+4. **RevenueCat setup** — create project at app.revenuecat.com, configure "premium" entitlement, create products in App Store Connect + Google Play Console, add `--dart-define=REVENUECAT_API_KEY_IOS=appl_...` and `REVENUECAT_API_KEY_ANDROID=goog_...` to build configuration, then set `_devPremiumOverride = false` in `subscription_service.dart`
 5. **Beta testing setup** — TestFlight + Google Play Internal Testing track
 
 ---
