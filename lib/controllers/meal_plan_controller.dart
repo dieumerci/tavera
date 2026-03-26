@@ -213,3 +213,28 @@ class MealPlanController extends AsyncNotifier<MealPlanState> {
 
   static String _fmtDate(DateTime d) => d.toIsoDateString();
 }
+
+// ── 7-day minimum check ───────────────────────────────────────────────────────
+
+/// Returns the count of distinct calendar days (in UTC) that have at least
+/// one meal log. Used to gate meal plan generation (requires ≥ 7 days).
+final distinctLoggedDaysProvider = FutureProvider<int>((ref) async {
+  final client = Supabase.instance.client;
+  final userId = client.auth.currentUser?.id;
+  if (userId == null) return 0;
+
+  // Fetch all logged_at timestamps and count distinct local calendar days.
+  final rows = await client
+      .from('meal_logs')
+      .select('logged_at')
+      .eq('user_id', userId);
+
+  final days = (rows as List<dynamic>)
+      .map((r) {
+        final dt = DateTime.parse(r['logged_at'] as String).toLocal();
+        return '${dt.year}-${dt.month}-${dt.day}';
+      })
+      .toSet();
+
+  return days.length;
+});

@@ -142,6 +142,11 @@ class _PlanTab extends ConsumerWidget {
         }
 
         if (state.plan == null) {
+          final loggedDays =
+              ref.watch(distinctLoggedDaysProvider).valueOrNull ?? 0;
+          if (loggedDays < 7) {
+            return _InsufficientDataState(loggedDays: loggedDays);
+          }
           return _EmptyPlanState(
             onGenerate: () =>
                 ref.read(mealPlanControllerProvider.notifier).generate(),
@@ -831,6 +836,61 @@ class _GeneratingState extends StatelessWidget {
               style: AppTextStyles.bodyMedium.copyWith(
                   color: AppColors.textSecondary),
               textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _InsufficientDataState extends StatelessWidget {
+  final int loggedDays;
+  const _InsufficientDataState({required this.loggedDays});
+
+  @override
+  Widget build(BuildContext context) {
+    final remaining = 7 - loggedDays;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(40),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: const BoxDecoration(
+                color: AppColors.surface,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.bar_chart_rounded,
+                  color: AppColors.textSecondary, size: 36),
+            ),
+            const SizedBox(height: 20),
+            Text('Almost there!', style: AppTextStyles.titleMedium),
+            const SizedBox(height: 8),
+            Text(
+              'Log $remaining more day${remaining == 1 ? '' : 's'} of meals and Tavera will build a personalised plan tailored to your nutrition goals.',
+              style:
+                  AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            // Progress indicator
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                value: loggedDays / 7,
+                backgroundColor: AppColors.border,
+                valueColor:
+                    const AlwaysStoppedAnimation<Color>(AppColors.accent),
+                minHeight: 8,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '$loggedDays / 7 days',
+              style: AppTextStyles.caption.copyWith(color: AppColors.textSecondary),
             ),
           ],
         ),
