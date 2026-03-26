@@ -270,9 +270,18 @@ class MealController extends Notifier<MealState> {
       final log = MealLog.fromMap(response);
 
       // Score any active challenges in the background — never awaited.
-      notifyChallenges(log, onComplete: () {
-        ref.invalidate(myChallengesProvider);
-      });
+      // Skip entirely if the user has no active challenges to avoid a
+      // needless edge-function round-trip.
+      final hasChallenges =
+          ref.read(myChallengesProvider).valueOrNull?.isNotEmpty == true;
+      if (hasChallenges) {
+        notifyChallenges(log, onComplete: () {
+          // Guard against notifier being disposed before the callback fires.
+          try {
+            ref.invalidate(myChallengesProvider);
+          } catch (_) {}
+        });
+      }
 
       state = state.copyWith(step: MealProcessingStep.saved);
       return log;

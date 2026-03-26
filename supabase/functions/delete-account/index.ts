@@ -65,21 +65,38 @@ Deno.serve(async (req: Request) => {
     // ── 2. Delete Storage objects ─────────────────────────────────────────────
     // Meal images live under "meals/<user_id>/<filename>".
     // Avatars (future) under "avatars/<user_id>".
-    // Fail-open: a missing bucket or empty folder is not an error.
+    // Paginated in batches of 1000 to handle heavy users with many images.
+    // Distinguishes "bucket doesn't exist" (skip) from real errors (record).
     for (const bucket of ["meals", "avatars"]) {
-      try {
-        const { data: files } = await admin.storage
+      let offset = 0;
+      const pageSize = 1000;
+      while (true) {
+        const { data: files, error: listError } = await admin.storage
           .from(bucket)
-          .list(uid, { limit: 1000 });
-        if (files && files.length > 0) {
-          const paths = files.map((f: { name: string }) => `${uid}/${f.name}`);
-          const { error } = await admin.storage.from(bucket).remove(paths);
-          if (error) {
-            errors.push(`storage.${bucket}: ${error.message}`);
+          .list(uid, { limit: pageSize, offset });
+
+        if (listError) {
+          // Bucket doesn't exist → not an error; anything else → record it.
+          if (!listError.message.includes("not found") &&
+              !listError.message.includes("does not exist")) {
+            errors.push(`storage.${bucket}.list: ${listError.message}`);
           }
+          break; // Stop pagination for this bucket.
         }
-      } catch (_) {
-        // Bucket doesn't exist yet — skip silently.
+
+        if (!files || files.length === 0) break; // No more files.
+
+        const paths = files.map((f: { name: string }) => `${uid}/${f.name}`);
+        const { error: removeError } = await admin.storage
+          .from(bucket)
+          .remove(paths);
+        if (removeError) {
+          errors.push(`storage.${bucket}.remove: ${removeError.message}`);
+          break; // Don't keep paginating if removal is failing.
+        }
+
+        if (files.length < pageSize) break; // Last page — done.
+        offset += pageSize;
       }
     }
 
@@ -109,17 +126,21 @@ Deno.serve(async (req: Request) => {
     const { error: authDeleteError } = await admin.auth.admin.deleteUser(uid);
     if (authDeleteError) {
       errors.push(`auth.deleteUser: ${authDeleteError.message}`);
-      // DB data is already deleted at this point. Log the error but still
-      // return success=true so the client clears its session — the orphaned
-      // Auth row will be cleaned up by a periodic admin job or Supabase support.
+      // All user data is deleted but the auth.users row could not be removed.
+      // Return success: false so the client does NOT navigate away — instead
+      // it should show the error and instruct the user to contact support.
+      // The orphaned auth row means this email remains registered; allowing
+      // silent sign-out here would let the user sign back in without a profile,
+      // causing undefined behaviour across the whole app.
       return new Response(
         JSON.stringify({
-          success: true,
-          warning: "Account data deleted but Auth row could not be removed. " +
-            "Contact support if you experience issues signing up again.",
+          success: false,
           errors,
+          hint: "Your account data has been deleted but the authentication " +
+            "record could not be removed. Please contact support — do not " +
+            "attempt to create a new account with the same email address.",
         }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 

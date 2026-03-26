@@ -5,6 +5,18 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../services/haptic_service.dart';
 
+/// Convenience helper — shows [PaywallSheet] as a bottom sheet from any
+/// [BuildContext]. Centralises the identical `showModalBottomSheet` call that
+/// was previously duplicated across four screens.
+void showPaywallSheet(BuildContext context) {
+  showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => const PaywallSheet(),
+  );
+}
+
 class PaywallSheet extends StatelessWidget {
   const PaywallSheet({super.key});
 

@@ -1,9 +1,10 @@
-import 'dart:async' show unawaited;
+import 'dart:async' show Timer, unawaited;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/config/app_config.dart';
+import '../core/extensions/date_extensions.dart';
 import '../models/food_item.dart';
 import '../models/meal_log.dart';
 import '../models/user_profile.dart';
@@ -159,13 +160,13 @@ final waterMlProvider = StateNotifierProvider<_WaterNotifier, int>(
 class _WaterNotifier extends StateNotifier<int> {
   _WaterNotifier() : super(0);
 
-  // ISO YYYY-MM-DD for the user's local today.
-  static String _todayKey() {
-    final now = DateTime.now();
-    return '${now.year}-'
-        '${now.month.toString().padLeft(2, '0')}-'
-        '${now.day.toString().padLeft(2, '0')}';
-  }
+  // Capture the calendar date at construction time so that the value loaded
+  // by loadToday() and every subsequent _upsert() always refer to the same
+  // DB row — even if the device crosses midnight between taps.
+  final String _today = DateTime.now().toIsoDateString();
+
+  // Debounce timer: coalesces rapid button taps into a single upsert.
+  Timer? _debounce;
 
   /// Load today's persisted value from DB on first build.
   Future<void> loadToday() async {
@@ -178,12 +179,12 @@ class _WaterNotifier extends StateNotifier<int> {
           .from('daily_stats')
           .select('water_ml')
           .eq('user_id', userId)
-          .eq('stat_date', _todayKey())
+          .eq('stat_date', _today)
           .maybeSingle();
 
-      if (row != null && mounted) {
-        state = (row['water_ml'] as int?) ?? 0;
-      }
+      // Re-check mounted after the async gap before mutating state.
+      if (!mounted) return;
+      state = (row?['water_ml'] as int?) ?? 0;
     } catch (_) {
       // Non-fatal — fall back to in-memory zero.
     }
@@ -206,12 +207,26 @@ class _WaterNotifier extends StateNotifier<int> {
     _persist();
   }
 
-  /// Fire-and-forget upsert — never awaited so UI stays instant.
+  /// Debounced persist — rapid taps (e.g. 5× in 500 ms) collapse into one
+  /// upsert, preventing a burst of redundant network requests.
   void _persist() {
-    _upsert(state);
+    _debounce?.cancel();
+    // Capture the current state value now so that the upsert always writes
+    // the state that was current when the last tap fired, not a later value.
+    final snapshot = state;
+    _debounce = Timer(
+      const Duration(milliseconds: 500),
+      () => _upsert(snapshot, _today),
+    );
   }
 
-  static Future<void> _upsert(int waterMl) async {
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  static Future<void> _upsert(int waterMl, String statDate) async {
     try {
       final client = Supabase.instance.client;
       final userId = client.auth.currentSession?.user.id;
@@ -220,7 +235,7 @@ class _WaterNotifier extends StateNotifier<int> {
       await client.from('daily_stats').upsert(
         {
           'user_id': userId,
-          'stat_date': _todayKey(),
+          'stat_date': statDate,
           'water_ml': waterMl,
         },
         onConflict: 'user_id,stat_date',
@@ -314,11 +329,17 @@ Future<MealLog?> directLogMeal(
     ));
 
     // Score any active challenges in the background — never awaited.
-    // On completion (success or failure), invalidate the challenges cache so
-    // the leaderboard reflects the new scores when the user navigates there.
-    notifyChallenges(log, onComplete: () {
-      ref.invalidate(myChallengesProvider);
-    });
+    // Skip if no active challenges to avoid a needless network call.
+    // On completion, invalidate so the leaderboard reflects the new scores.
+    final hasChallenges =
+        ref.read(myChallengesProvider).valueOrNull?.isNotEmpty == true;
+    if (hasChallenges) {
+      notifyChallenges(log, onComplete: () {
+        try {
+          ref.invalidate(myChallengesProvider);
+        } catch (_) {}
+      });
+    }
 
     return log;
   } catch (_) {

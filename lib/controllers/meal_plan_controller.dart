@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/extensions/date_extensions.dart';
 import '../models/grocery_list.dart';
 import '../models/meal_plan.dart';
 
@@ -201,6 +202,5 @@ class MealPlanController extends AsyncNotifier<MealPlanState> {
     return DateTime(date.year, date.month, date.day - diff);
   }
 
-  static String _fmtDate(DateTime d) =>
-      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  static String _fmtDate(DateTime d) => d.toIsoDateString();
 }

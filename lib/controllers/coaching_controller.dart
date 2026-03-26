@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/extensions/date_extensions.dart';
 import '../models/coaching_insight.dart';
 
 // ─── CoachingController ───────────────────────────────────────────────────────
@@ -54,7 +55,7 @@ class CoachingController extends AsyncNotifier<List<CoachingInsight>> {
 
     final weekStart = _mondayOf(date ?? DateTime.now());
     final weekStartStr =
-        '${weekStart.year}-${weekStart.month.toString().padLeft(2, '0')}-${weekStart.day.toString().padLeft(2, '0')}';
+        weekStart.toIsoDateString();
 
     // Optimistic check — skip if this week already has insights.
     final existing = state.valueOrNull ?? [];

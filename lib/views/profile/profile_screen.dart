@@ -211,12 +211,7 @@ class ProfileScreen extends ConsumerWidget {
           _SectionLabel('Subscription'),
           if (profile?.isPremium != true)
             _UpgradeBanner(
-              onTap: () => showModalBottomSheet<void>(
-                context: context,
-                isScrollControlled: true,
-                backgroundColor: Colors.transparent,
-                builder: (_) => const PaywallSheet(),
-              ),
+              onTap: () => showPaywallSheet(context),
             )
           else
             _Tile(
@@ -238,12 +233,7 @@ class ProfileScreen extends ConsumerWidget {
               if (profile?.isPremium == true) {
                 context.push('/coaching');
               } else {
-                showModalBottomSheet<void>(
-                  context: context,
-                  isScrollControlled: true,
-                  backgroundColor: Colors.transparent,
-                  builder: (_) => const PaywallSheet(),
-                );
+                showPaywallSheet(context);
               }
             },
           ),
@@ -255,12 +245,7 @@ class ProfileScreen extends ConsumerWidget {
               if (profile?.isPremium == true) {
                 context.push('/meal-planner');
               } else {
-                showModalBottomSheet<void>(
-                  context: context,
-                  isScrollControlled: true,
-                  backgroundColor: Colors.transparent,
-                  builder: (_) => const PaywallSheet(),
-                );
+                showPaywallSheet(context);
               }
             },
           ),

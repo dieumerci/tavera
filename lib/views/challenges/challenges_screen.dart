@@ -130,12 +130,7 @@ class _ChallengesScreenState extends ConsumerState<ChallengesScreen>
             onPressed: () {
               HapticService.heavy();
               Navigator.of(ctx).pop();
-              showModalBottomSheet<void>(
-                context: context,
-                isScrollControlled: true,
-                backgroundColor: Colors.transparent,
-                builder: (_) => const PaywallSheet(),
-              );
+              showPaywallSheet(context);
             },
             child: Text('Upgrade', style: TextStyle(color: AppColors.accent)),
           ),

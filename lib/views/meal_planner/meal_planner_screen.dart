@@ -947,12 +947,7 @@ class _PaywallPlaceholder extends StatelessWidget {
             ElevatedButton(
               onPressed: () {
                 HapticService.heavy();
-                showModalBottomSheet<void>(
-                  context: context,
-                  isScrollControlled: true,
-                  backgroundColor: Colors.transparent,
-                  builder: (_) => const PaywallSheet(),
-                );
+                showPaywallSheet(context);
               },
               child: const Text('Unlock Meal Planner'),
             ),
