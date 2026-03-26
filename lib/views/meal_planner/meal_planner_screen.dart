@@ -630,7 +630,13 @@ class _GroceryContent extends ConsumerWidget {
           ),
         ],
 
-        const SliverToBoxAdapter(child: SizedBox(height: 32)),
+        // ── Grocery delivery stub (Phase 3 integration placeholder) ──────
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+            child: _DeliveryStubBanner(),
+          ),
+        ),
       ],
     );
   }
@@ -650,6 +656,54 @@ class _GroceryContent extends ConsumerWidget {
         content: Text('Share code "$token" copied to clipboard!'),
         backgroundColor: AppColors.success.withValues(alpha: 0.9),
         behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+}
+
+// ─── Grocery delivery stub ────────────────────────────────────────────────────
+// Phase 3 will wire a real GroceryDeliveryService here.
+
+class _DeliveryStubBanner extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: AppColors.card,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.local_grocery_store_outlined,
+                color: AppColors.textTertiary, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Connect delivery service',
+                    style: AppTextStyles.labelLarge),
+                Text(
+                  'Order your groceries in one tap — coming soon',
+                  style: AppTextStyles.caption
+                      .copyWith(color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+          const Icon(Icons.chevron_right_rounded,
+              color: AppColors.textTertiary, size: 18),
+        ],
       ),
     );
   }
