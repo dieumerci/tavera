@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../controllers/auth_controller.dart';
+import '../../controllers/fasting_controller.dart';
 import '../../controllers/log_controller.dart';
 import '../../controllers/meal_controller.dart';
 import '../../core/theme/app_colors.dart';
@@ -47,14 +48,90 @@ class _AddFoodSheetState extends ConsumerState<AddFoodSheet> {
     );
   }
 
+  // ── Fasting gate ─────────────────────────────────────────────────────────────
+  //
+  // When a fast is active, show a soft warning rather than a hard block.
+  // Returns true when the user should proceed with logging, false to abort.
+  // The user can log anyway (their choice) or end the fast first.
+
+  Future<bool> _checkFastingGate() async {
+    final activeFast =
+        ref.read(fastingControllerProvider).valueOrNull;
+    if (activeFast == null || !activeFast.isActive) return true;
+
+    final protocol = activeFast.protocol.label;
+    final remaining = activeFast.remaining;
+    final h = remaining.inHours;
+    final m = remaining.inMinutes % 60;
+    final timeLeft =
+        h > 0 ? '${h}h ${m}m left' : '${m}m left';
+
+    HapticService.medium();
+
+    final result = await showDialog<_FastingGateAction>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            const Text('🌙 ', style: TextStyle(fontSize: 20)),
+            Text('You\'re fasting', style: AppTextStyles.titleMedium),
+          ],
+        ),
+        content: Text(
+          'Your $protocol fast has $timeLeft remaining. '
+          'Eating now will break your fast.',
+          style: AppTextStyles.bodyMedium
+              .copyWith(color: AppColors.textSecondary, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () =>
+                Navigator.of(ctx).pop(_FastingGateAction.cancel),
+            child: Text('Cancel',
+                style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () =>
+                Navigator.of(ctx).pop(_FastingGateAction.endFast),
+            child: Text('End fast',
+                style: TextStyle(
+                    color: AppColors.danger,
+                    fontWeight: FontWeight.w600)),
+          ),
+          TextButton(
+            onPressed: () =>
+                Navigator.of(ctx).pop(_FastingGateAction.logAnyway),
+            child: Text('Log anyway',
+                style: TextStyle(
+                    color: AppColors.accent,
+                    fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+
+    if (result == null || result == _FastingGateAction.cancel) return false;
+
+    if (result == _FastingGateAction.endFast) {
+      await ref.read(fastingControllerProvider.notifier).stop();
+    }
+
+    return true; // log anyway OR fast ended → allow logging
+  }
+
   // ── Take a photo ────────────────────────────────────────────────────────────
 
-  void _onTakePhoto() {
+  Future<void> _onTakePhoto() async {
     HapticService.selection();
     if (!_canLog()) {
       _showPaywall();
       return;
     }
+    if (!await _checkFastingGate()) return;
+    if (!mounted) return;
     Navigator.of(context).pop();
     context.push('/camera');
   }
@@ -67,6 +144,8 @@ class _AddFoodSheetState extends ConsumerState<AddFoodSheet> {
       _showPaywall();
       return;
     }
+    if (!await _checkFastingGate()) return;
+    if (!mounted) return;
 
     setState(() => _picking = true);
 
@@ -116,24 +195,28 @@ class _AddFoodSheetState extends ConsumerState<AddFoodSheet> {
 
   // ── Scan barcode ────────────────────────────────────────────────────────────
 
-  void _onScanBarcode() {
+  Future<void> _onScanBarcode() async {
     HapticService.selection();
     if (!_canLog()) {
       _showPaywall();
       return;
     }
+    if (!await _checkFastingGate()) return;
+    if (!mounted) return;
     Navigator.of(context).pop();
     context.push('/barcode');
   }
 
   // ── Quick add ───────────────────────────────────────────────────────────────
 
-  void _onQuickAdd() {
+  Future<void> _onQuickAdd() async {
     HapticService.selection();
     if (!_canLog()) {
       _showPaywall();
       return;
     }
+    if (!await _checkFastingGate()) return;
+    if (!mounted) return;
     Navigator.of(context).pop();
     showModalBottomSheet<void>(
       context: context,
@@ -282,3 +365,7 @@ class _Option extends StatelessWidget {
     );
   }
 }
+
+// ── Fasting gate action enum ──────────────────────────────────────────────────
+
+enum _FastingGateAction { cancel, logAnyway, endFast }

@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -7,39 +9,44 @@ import '../capture/add_food_sheet.dart';
 
 // ─── App Shell ────────────────────────────────────────────────────────────────
 //
-// Persistent scaffold wrapper used by StatefulShellRoute. Renders the active
-// tab's child and a bottom navigation bar with a floating centre FAB that
-// opens the food-capture picker.
+// Persistent scaffold wrapper used by StatefulShellRoute.
+//
+// Navigation bar: persistent_bottom_nav_bar Style15 — a frosted-glass floating
+// pill bar with a circular + button elevated above the bar centre (no notch).
 //
 // Tab layout  (indices match StatefulShellBranch order in app_router.dart):
 //   0 — Home (Dashboard)
 //   1 — History / Nutrition
-//   [FAB notch — not a tab]
+//   [Centre + button — not a tab]
 //   2 — Challenges
 //   3 — Profile
 //
-// The FAB is the Scaffold's floatingActionButton placed at centerDocked so
-// Flutter's BottomAppBar automatically carves a matching notch in the bar.
-// All navigation state is owned by GoRouter — this widget only translates
-// tap events into branch switches.
+// Architecture notes:
+//   • `extendBody: true` lets content flow behind the translucent nav bar so
+//     the blur effect is visible. Screens add their own bottom padding via
+//     `kNavBarTotalHeight` or rely on the `SliverPadding` at list end.
+//   • The FAB is a raw GestureDetector inside the nav bar Stack — no
+//     Scaffold.floatingActionButton / BottomAppBar notch needed.
+//   • Tab switching is still owned entirely by GoRouter (goBranch).
+
+// Exposed so screens can add matching bottom padding when needed.
+const double kNavBarHeight = 62.0;
+const double kFabSize = 58.0;
+const double kFabLift = 24.0; // px the FAB rises above the bar top edge
 
 class AppShell extends StatelessWidget {
   final StatefulNavigationShell navigationShell;
   const AppShell({super.key, required this.navigationShell});
 
   void _onTap(int index) {
-    // Medium impact on every tab switch — noticeably strong per UX spec.
     HapticService.medium();
     navigationShell.goBranch(
       index,
-      // When tapping the already-active tab, return to the branch root
-      // (restores scroll position / initial location via GoRouter key reuse).
       initialLocation: index == navigationShell.currentIndex,
     );
   }
 
   void _onAddTapped(BuildContext context) {
-    // Heavy impact for the primary action FAB — most emphatic haptic tier.
     HapticService.heavy();
     showModalBottomSheet<void>(
       context: context,
@@ -56,66 +63,183 @@ class AppShell extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: AppColors.background,
+      extendBody: true, // body renders behind the translucent pill bar
       body: navigationShell,
+      bottomNavigationBar: _Style15NavBar(
+        selectedIndex: idx,
+        bottomPad: bottomPad,
+        onTabSelected: _onTap,
+        onAddTapped: () => _onAddTapped(context),
+      ),
+    );
+  }
+}
 
-      // Floating FAB centred on the BottomAppBar notch.
-      floatingActionButton: _CenterFab(onTap: () => _onAddTapped(context)),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+// ─── Style 15 nav bar ─────────────────────────────────────────────────────────
+//
+// A frosted-glass floating pill with a circular + button elevated above the
+// bar's centre, matching persistent_bottom_nav_bar NavBarStyle.style15.
+//
+// Layout (cross-section view):
+//
+//               ┌──────────────────────────────────────────┐
+//               │              (kFabLift px)               │  ← transparent gap for FAB
+//   ┌───────────┴──────────────────────────────────────────┴───────────┐
+//   │  [Home]  [History]      [  +  ]      [Challenges]  [Profile]    │  ← pill bar
+//   └─────────────────────────────────────────────────────────────────┘
+//   └─────── safe-area bottom padding ───────────────────────────────┘
 
-      // BottomAppBar must be the direct bottomNavigationBar (not wrapped in
-      // a Column) so the Scaffold can read its notch geometry for the FAB.
-      bottomNavigationBar: BottomAppBar(
-        color: AppColors.surface,
-        shape: const CircularNotchedRectangle(),
-        notchMargin: 8.0,
-        elevation: 0,
-        padding: EdgeInsets.zero,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Subtle 1px separator between content and nav bar.
-            Container(height: 1, color: AppColors.border),
-            SizedBox(
-              height: 58,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  // Left side — Home & History
-                  _NavItem(
-                    icon: Icons.home_rounded,
-                    label: 'Home',
-                    active: idx == 0,
-                    onTap: () => _onTap(0),
-                  ),
-                  _NavItem(
-                    icon: Icons.bar_chart_rounded,
-                    label: 'History',
-                    active: idx == 1,
-                    onTap: () => _onTap(1),
-                  ),
+class _Style15NavBar extends StatelessWidget {
+  final int selectedIndex;
+  final double bottomPad;
+  final ValueChanged<int> onTabSelected;
+  final VoidCallback onAddTapped;
 
-                  // Centre gap — reserved for the floating FAB.
-                  const SizedBox(width: 72),
+  const _Style15NavBar({
+    required this.selectedIndex,
+    required this.bottomPad,
+    required this.onTabSelected,
+    required this.onAddTapped,
+  });
 
-                  // Right side — Challenges & Profile
-                  _NavItem(
-                    icon: Icons.emoji_events_rounded,
-                    label: 'Challenges',
-                    active: idx == 2,
-                    onTap: () => _onTap(2),
-                  ),
-                  _NavItem(
-                    icon: Icons.person_rounded,
-                    label: 'Profile',
-                    active: idx == 3,
-                    onTap: () => _onTap(3),
-                  ),
-                ],
-              ),
+  @override
+  Widget build(BuildContext context) {
+    // Total height the Scaffold reserves (so screens scroll above it).
+    final totalHeight =
+        kFabLift + kNavBarHeight + bottomPad;
+
+    return SizedBox(
+      height: totalHeight,
+      child: Stack(
+        alignment: Alignment.bottomCenter,
+        clipBehavior: Clip.none,
+        children: [
+          // ── Frosted pill bar ───────────────────────────────────────────
+          Positioned(
+            bottom: 0,
+            left: 14,
+            right: 14,
+            child: _PillBar(
+              selectedIndex: selectedIndex,
+              bottomPad: bottomPad,
+              onTabSelected: onTabSelected,
             ),
-            // Bottom safe-area spacer (home indicator on iOS, gesture bar on Android).
-            SizedBox(height: bottomPad),
-          ],
+          ),
+
+          // ── Floating + button ──────────────────────────────────────────
+          // Sits at the top of the pill, half-above half-inside.
+          Positioned(
+            bottom: bottomPad + kNavBarHeight / 2 - kFabSize / 2 + kFabLift / 2,
+            child: _Style15Fab(onTap: onAddTapped),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Pill bar (frosted glass container) ───────────────────────────────────────
+
+class _PillBar extends StatelessWidget {
+  final int selectedIndex;
+  final double bottomPad;
+  final ValueChanged<int> onTabSelected;
+
+  const _PillBar({
+    required this.selectedIndex,
+    required this.bottomPad,
+    required this.onTabSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(26),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.28),
+            blurRadius: 24,
+            spreadRadius: 0,
+            offset: const Offset(0, 4),
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.10),
+            blurRadius: 8,
+            spreadRadius: 0,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(26),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+          child: Container(
+            color: AppColors.surface.withValues(alpha: 0.93),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Top hairline separator
+                Container(
+                  height: 1,
+                  color: AppColors.border.withValues(alpha: 0.6),
+                ),
+                // Nav items row
+                SizedBox(
+                  height: kNavBarHeight,
+                  child: Row(
+                    children: [
+                      // ── Left items ─────────────────────────────────────
+                      Expanded(
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            _NavItem(
+                              icon: Icons.home_rounded,
+                              label: 'Home',
+                              active: selectedIndex == 0,
+                              onTap: () => onTabSelected(0),
+                            ),
+                            _NavItem(
+                              icon: Icons.bar_chart_rounded,
+                              label: 'History',
+                              active: selectedIndex == 1,
+                              onTap: () => onTabSelected(1),
+                            ),
+                          ],
+                        ),
+                      ),
+                      // ── Centre gap (FAB sits here visually) ────────────
+                      const SizedBox(width: kFabSize + 8),
+                      // ── Right items ────────────────────────────────────
+                      Expanded(
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            _NavItem(
+                              icon: Icons.emoji_events_rounded,
+                              label: 'Challenges',
+                              active: selectedIndex == 2,
+                              onTap: () => onTabSelected(2),
+                            ),
+                            _NavItem(
+                              icon: Icons.person_rounded,
+                              label: 'Profile',
+                              active: selectedIndex == 3,
+                              onTap: () => onTabSelected(3),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Safe-area spacer (home indicator on iOS, gesture bar on Android)
+                SizedBox(height: bottomPad),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -150,14 +274,14 @@ class _NavItem extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
+              duration: const Duration(milliseconds: 220),
               curve: Curves.easeOut,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
               decoration: BoxDecoration(
                 color: active
-                    ? AppColors.accent.withValues(alpha: 0.1)
+                    ? AppColors.accent.withValues(alpha: 0.12)
                     : Colors.transparent,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(icon, color: color, size: 22),
             ),
@@ -178,36 +302,38 @@ class _NavItem extends StatelessWidget {
   }
 }
 
-// ─── Centre FAB ───────────────────────────────────────────────────────────────
+// ─── Style 15 floating + button ───────────────────────────────────────────────
 //
-// Custom floating action button. Rendered as the Scaffold.floatingActionButton
-// at FloatingActionButtonLocation.centerDocked so Flutter automatically creates
-// a matching curved notch in the BottomAppBar. The 56px diameter is the
-// Material Design standard FAB size; BottomAppBar measures it to set the notch.
+// Circular accent-coloured button elevated above the pill bar. No Scaffold
+// notch needed — it is a plain Widget positioned in the nav bar Stack.
 
-class _CenterFab extends StatelessWidget {
+class _Style15Fab extends StatelessWidget {
   final VoidCallback onTap;
-  const _CenterFab({required this.onTap});
+  const _Style15Fab({required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 56,
-        height: 56,
+        width: kFabSize,
+        height: kFabSize,
         decoration: BoxDecoration(
           color: AppColors.accent,
           shape: BoxShape.circle,
+          border: Border.all(
+            color: AppColors.background.withValues(alpha: 0.8),
+            width: 3,
+          ),
           boxShadow: [
             BoxShadow(
-              color: AppColors.accent.withValues(alpha: 0.40),
+              color: AppColors.accent.withValues(alpha: 0.45),
               blurRadius: 20,
               spreadRadius: 0,
-              offset: const Offset(0, 4),
+              offset: const Offset(0, 6),
             ),
             BoxShadow(
-              color: AppColors.accent.withValues(alpha: 0.15),
+              color: AppColors.accent.withValues(alpha: 0.20),
               blurRadius: 8,
               spreadRadius: 2,
               offset: Offset.zero,

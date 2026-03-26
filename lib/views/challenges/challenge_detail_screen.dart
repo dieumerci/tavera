@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../controllers/challenge_controller.dart';
 import '../../controllers/auth_controller.dart';
@@ -73,8 +74,20 @@ class _ChallengeContent extends ConsumerWidget {
         // ── Header ───────────────────────────────────────────────────────
         _ChallengeAppBar(challenge: challenge),
 
+        // ── Completion banner (animated, appears for completed challenges) ─
+        if (challenge.isCompleted && myParticipation.userId.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+              child: _CompletionBanner(
+                challenge: challenge,
+                participant: myParticipation,
+              ),
+            ),
+          ),
+
         // ── Your progress card ───────────────────────────────────────────
-        if (myParticipation.userId.isNotEmpty) ...[
+        if (myParticipation.userId.isNotEmpty && !challenge.isCompleted) ...[
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
@@ -139,6 +152,178 @@ class _ChallengeContent extends ConsumerWidget {
           ),
 
         const SliverToBoxAdapter(child: SizedBox(height: 48)),
+      ],
+    );
+  }
+}
+
+// ─── Completion banner ────────────────────────────────────────────────────────
+//
+// Slides in from the top with a scale + fade animation when first rendered.
+// Shows the user's final rank and score, plus a "Share results" button that
+// invokes the native iOS/Android share sheet with a pre-formatted text card.
+
+class _CompletionBanner extends StatelessWidget {
+  final Challenge challenge;
+  final ChallengeParticipant participant;
+  const _CompletionBanner(
+      {required this.challenge, required this.participant});
+
+  String _buildShareText() {
+    final rank = participant.rank > 0 ? '#${participant.rank}' : 'a participant';
+    final score = participant.score.toStringAsFixed(0);
+    final streak = participant.streakDays;
+    final start = DateFormat('MMM d').format(challenge.startDate);
+    final end = DateFormat('MMM d').format(challenge.endDate);
+
+    return '''
+🏆 I just completed a challenge on Tavera!
+
+${challenge.type.icon} ${challenge.title}
+📅 $start – $end
+🎯 Goal: ${challenge.targetValue.toStringAsFixed(0)} ${challenge.type == ChallengeType.calorieBudget ? 'kcal/day' : challenge.type == ChallengeType.streak ? 'day streak' : challenge.type == ChallengeType.macroTarget ? 'g protein/day' : 'pts'}
+🏅 Final rank: $rank
+⭐ Score: $score pts${streak > 0 ? '\n🔥 Best streak: $streak days' : ''}
+
+Track your nutrition with Tavera — AI-powered calorie tracking 📱
+''';
+  }
+
+  String _rankLabel(int rank) => switch (rank) {
+        1 => '🥇 1st Place',
+        2 => '🥈 2nd Place',
+        3 => '🥉 3rd Place',
+        _ => rank > 0 ? '#$rank Place' : 'Completed',
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 600),
+      curve: Curves.easeOutBack,
+      builder: (context, value, child) => Transform.scale(
+        scale: value,
+        child: Opacity(opacity: value.clamp(0.0, 1.0), child: child),
+      ),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              const Color(0xFFFFD700).withValues(alpha: 0.15),
+              AppColors.accent.withValues(alpha: 0.1),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: const Color(0xFFFFD700).withValues(alpha: 0.4),
+          ),
+        ),
+        child: Column(
+          children: [
+            // Trophy row
+            Row(
+              children: [
+                const Text('🏆', style: TextStyle(fontSize: 36)),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Challenge Complete!',
+                        style: AppTextStyles.titleMedium.copyWith(
+                          color: const Color(0xFFFFD700),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        challenge.title,
+                        style: AppTextStyles.caption.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            // Stats row
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _StatBadge(
+                  label: 'Final rank',
+                  value: _rankLabel(participant.rank),
+                ),
+                _StatBadge(
+                  label: 'Score',
+                  value: '${participant.score.toStringAsFixed(0)} pts',
+                ),
+                if (participant.streakDays > 0)
+                  _StatBadge(
+                    label: 'Best streak',
+                    value: '${participant.streakDays}d 🔥',
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            // Share button
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  HapticService.medium();
+                  Share.share(_buildShareText(),
+                      subject: 'I completed a Tavera challenge!');
+                },
+                icon: const Icon(Icons.share_rounded, size: 16),
+                label: const Text('Share my results'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFFD700).withValues(alpha: 0.15),
+                  foregroundColor: const Color(0xFFFFD700),
+                  elevation: 0,
+                  side: BorderSide(
+                      color: const Color(0xFFFFD700).withValues(alpha: 0.4)),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StatBadge extends StatelessWidget {
+  final String label;
+  final String value;
+  const _StatBadge({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(value,
+            style: AppTextStyles.labelLarge.copyWith(
+              color: AppColors.textPrimary,
+              fontWeight: FontWeight.w700,
+            )),
+        const SizedBox(height: 2),
+        Text(label,
+            style: AppTextStyles.caption.copyWith(
+              color: AppColors.textSecondary,
+              fontSize: 10,
+            )),
       ],
     );
   }

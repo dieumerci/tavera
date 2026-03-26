@@ -59,8 +59,9 @@ class SubscriptionService {
     final rcStatus = ref.watch(revenueCatPremiumProvider).valueOrNull;
     if (rcStatus != null) return rcStatus;
 
-    // DB fallback
-    final profile = ref.read(userProfileProvider).valueOrNull;
+    // DB fallback — ref.watch so the widget rebuilds when the profile stream
+    // emits a new tier (e.g. after an external SQL update or webhook).
+    final profile = ref.watch(userProfileProvider).valueOrNull;
     return _dbPremium(profile);
   }
 
@@ -75,7 +76,7 @@ class SubscriptionService {
 
   /// The current user's subscription tier, or `free` when not loaded.
   static SubscriptionTier tier(WidgetRef ref) {
-    return ref.read(userProfileProvider).valueOrNull?.tier
+    return ref.watch(userProfileProvider).valueOrNull?.tier
         ?? SubscriptionTier.free;
   }
 
