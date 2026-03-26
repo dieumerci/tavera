@@ -11,6 +11,10 @@ class UserProfile {
   final SubscriptionTier tier;
   final bool onboardingCompleted;
 
+  /// When true, display (carbs − fiber) in all macro UIs.
+  /// Stored as `net_carbs_mode` in the profiles table.
+  final bool netCarbsMode;
+
   // Body stats — all optional; used for BMR-based goal suggestions.
   final double? weightKg;
   final int? heightCm;
@@ -25,6 +29,7 @@ class UserProfile {
     this.calorieGoal = 2000,
     this.tier = SubscriptionTier.free,
     this.onboardingCompleted = false,
+    this.netCarbsMode = false,
     this.weightKg,
     this.heightCm,
     this.age,
@@ -63,6 +68,7 @@ class UserProfile {
         ),
         onboardingCompleted:
             (map['onboarding_completed'] as bool?) ?? false,
+        netCarbsMode: (map['net_carbs_mode'] as bool?) ?? false,
         weightKg: (map['weight_kg'] as num?)?.toDouble(),
         heightCm: map['height_cm'] as int?,
         age: map['age'] as int?,
@@ -82,6 +88,7 @@ class UserProfile {
         'calorie_goal': calorieGoal,
         'subscription_tier': tier.name,
         'onboarding_completed': onboardingCompleted,
+        'net_carbs_mode': netCarbsMode,
         'weight_kg': weightKg,
         'height_cm': heightCm,
         'age': age,
@@ -94,6 +101,7 @@ class UserProfile {
     int? calorieGoal,
     SubscriptionTier? tier,
     bool? onboardingCompleted,
+    bool? netCarbsMode,
     double? weightKg,
     int? heightCm,
     int? age,
@@ -107,6 +115,7 @@ class UserProfile {
         calorieGoal: calorieGoal ?? this.calorieGoal,
         tier: tier ?? this.tier,
         onboardingCompleted: onboardingCompleted ?? this.onboardingCompleted,
+        netCarbsMode: netCarbsMode ?? this.netCarbsMode,
         weightKg: weightKg ?? this.weightKg,
         heightCm: heightCm ?? this.heightCm,
         age: age ?? this.age,

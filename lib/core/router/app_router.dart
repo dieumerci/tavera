@@ -8,6 +8,7 @@ import '../../views/barcode/barcode_screen.dart';
 import '../../views/camera/camera_screen.dart';
 import '../../views/challenges/challenge_detail_screen.dart';
 import '../../views/challenges/challenges_screen.dart';
+import '../../views/fasting/fasting_screen.dart';
 import '../../views/meal_planner/meal_planner_screen.dart';
 import '../../views/coaching/coaching_screen.dart';
 import '../../views/dashboard/dashboard_screen.dart';
@@ -146,6 +147,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => _slideTransition(
           state,
           const MealPlannerScreen(),
+        ),
+      ),
+
+      // Intermittent Fasting timer: accessed from Dashboard card or Profile
+      GoRoute(
+        path: '/fasting',
+        pageBuilder: (context, state) => _slideTransition(
+          state,
+          const FastingScreen(),
         ),
       ),
 

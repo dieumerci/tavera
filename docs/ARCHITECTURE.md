@@ -1,8 +1,8 @@
 # TAVERA — System Architecture & Technical Design
 
-**Document Version:** 1.0  
-**Last Updated:** March 23, 2026  
-**Status:** Pre-Development  
+**Document Version:** 1.2
+**Last Updated:** March 25, 2026
+**Status:** Phase 1 Complete · Phase 2 In Progress
 **Author:** Dee (Founder)
 
 ---
@@ -23,7 +23,7 @@ The system is composed of four layers: the mobile client, the backend platform, 
 **Minimum SDK:** Flutter 3.22+ / Dart 3.4+  
 **Target Platforms:** iOS 15+ and Android 10+ (API level 29+)  
 **State Management:** Riverpod 2.x — chosen over Bloc for less boilerplate and better testability in a small team. Riverpod's code generation with `riverpod_annotation` reduces ceremony while maintaining type safety.  
-**Navigation:** GoRouter — Flutter's recommended declarative routing solution with deep linking support, which is required for push notification handling and future web companion.  
+**Navigation:** GoRouter 14.x — Flutter's recommended declarative routing solution with deep linking support. Uses `StatefulShellRoute.indexedStack` for the main tab shell so each tab (Dashboard, History, Profile) preserves its scroll state independently. Camera and barcode screens are top-level routes outside the shell so they cover the full screen without the bottom navigation bar.
 **Local Storage:** Hive for lightweight key-value caching (user preferences, cached meal data), SQLite via Drift for structured local meal history and offline queue.  
 **Camera:** The `camera` package for direct viewfinder control combined with `image_picker` as a fallback. Images are compressed client-side to a maximum of 1024x1024 pixels at 85% JPEG quality before upload, balancing AI recognition accuracy against upload speed and storage cost.  
 **Push Notifications:** Firebase Cloud Messaging (FCM) for both iOS and Android. Even though the primary backend is Supabase, FCM remains the industry standard for reliable cross-platform push delivery. The `firebase_messaging` Flutter package handles foreground and background notification receipt.  
@@ -44,7 +44,7 @@ The system is composed of four layers: the mobile client, the backend platform, 
 
 ### AI Processing Pipeline
 
-**Food Recognition API:** Google Cloud Vision API for initial food identification, combined with a custom fine-tuned model hosted on Google Cloud Vertex AI as the product matures. In the MVP phase, the pipeline works as follows: the meal photo is uploaded to Supabase Storage, a Supabase Edge Function is triggered, the Edge Function sends the image to the food recognition service, the service returns identified food items with confidence scores, and the Edge Function maps those items to a nutritional database to produce calorie and macro estimates.
+**Food Recognition API:** OpenAI GPT-4o Vision for food identification, calorie estimation, and macro breakdown in a single API call. This replaced the originally planned Google Cloud Vision + USDA database lookup approach because it reduced time-to-working pipeline from weeks to days. The pipeline: meal photo → Supabase Storage upload → Edge Function `analyse-meal` → GPT-4o Vision → structured JSON response with food items, portions, calories, and macros → Flutter review screen. GCV + Vertex AI remains the plan for a custom trained model in Phase 3 once meal photo data is accumulated.
 
 **Nutritional Database:** The USDA FoodData Central database (public domain, over 380,000 food items with verified nutritional data) serves as the foundational data source. This is supplemented by the Open Food Facts database for international packaged foods and barcode data. Both databases are imported into PostgreSQL tables and updated quarterly.
 
@@ -269,6 +269,72 @@ Simple hydration tracking.
 | amount_ml | integer | Water consumed |
 | logged_at | timestamptz | When consumed |
 
+### challenges *(Phase 2 — Social Accountability Challenges)*
+Group challenges that users create or join.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid (PK) | Challenge identifier |
+| creator_id | uuid (FK → users) | Who created the challenge |
+| title | text | e.g. "7-Day Protein Challenge" |
+| description | text | Goal description |
+| goal_type | enum | 'protein_target', 'calorie_range', 'consecutive_days', 'custom' |
+| target_value | numeric | Goal threshold (e.g. 150g protein/day) |
+| start_date | date | Challenge start |
+| end_date | date | Challenge end |
+| is_public | boolean | Discoverable by other users |
+| invite_code | text | Short code for joining |
+| created_at | timestamptz | Creation time |
+
+### challenge_participants *(Phase 2)*
+Tracks who has joined each challenge and their current standing.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| challenge_id | uuid (FK → challenges) | Challenge |
+| user_id | uuid (FK → users) | Participant |
+| joined_at | timestamptz | When they joined |
+| current_streak | integer | Consecutive days meeting the goal |
+| total_score | numeric | Cumulative score for leaderboard |
+| rank | integer | Current rank within the challenge |
+
+### challenge_events *(Phase 2)*
+Immutable audit log of participant actions — used by the AI notifier to generate personalised messages.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid (PK) | Event identifier |
+| challenge_id | uuid (FK → challenges) | Challenge |
+| user_id | uuid (FK → users) | Participant |
+| event_type | enum | 'goal_met', 'goal_missed', 'streak_milestone', 'rank_change', 'challenge_completed' |
+| payload | jsonb | Event-specific data |
+| created_at | timestamptz | When event occurred |
+
+### meal_plans *(Phase 2 — AI Meal Planner)*
+AI-generated weekly meal plans.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid (PK) | Plan identifier |
+| user_id | uuid (FK → users) | Owner |
+| week_start | date | Monday of the plan week |
+| generated_at | timestamptz | When AI produced the plan |
+| plan_data | jsonb | 7-day plan: [{day, meals: [{name, ingredients, calories, macros}]}] |
+| is_active | boolean | Currently in use |
+| created_at | timestamptz | When stored |
+
+### grocery_lists *(Phase 2)*
+Grocery lists derived from meal plans.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid (PK) | List identifier |
+| user_id | uuid (FK → users) | Owner |
+| meal_plan_id | uuid (FK → meal_plans) | Source meal plan |
+| items | jsonb | [{name, quantity, unit, category, is_checked}] |
+| created_at | timestamptz | When generated |
+| updated_at | timestamptz | Last user edit (check-offs, additions) |
+
 ---
 
 ## AI Processing Pipeline — Detailed Flow
@@ -420,85 +486,90 @@ The Flutter app reads these via the `flutter_dotenv` package for development and
 
 ---
 
-## Folder Structure (Flutter Project)
+## Folder Structure (Flutter Project — Current)
 
 ```
-tavera_app/
+tavera/
 ├── lib/
-│   ├── main.dart                      # App entry point
-│   ├── app.dart                       # MaterialApp configuration
-│   ├── router.dart                    # GoRouter route definitions
-│   ├── theme/
-│   │   ├── app_theme.dart             # ThemeData and color scheme
-│   │   └── typography.dart            # Text styles
-│   ├── core/
-│   │   ├── constants.dart             # App-wide constants
-│   │   ├── exceptions.dart            # Custom exception types
-│   │   ├── extensions/                # Dart extension methods
-│   │   └── utils/                     # Shared utilities
-│   ├── config/
-│   │   ├── env.dart                   # Environment variable access
-│   │   └── supabase_config.dart       # Supabase client initialisation
-│   ├── data/
-│   │   ├── models/                    # Freezed data classes
-│   │   │   ├── user_model.dart
-│   │   │   ├── meal_model.dart
-│   │   │   ├── meal_item_model.dart
-│   │   │   ├── food_model.dart
-│   │   │   ├── known_meal_model.dart
-│   │   │   └── coaching_insight_model.dart
-│   │   ├── repositories/              # Data access layer
-│   │   │   ├── auth_repository.dart
-│   │   │   ├── meal_repository.dart
-│   │   │   ├── food_repository.dart
-│   │   │   ├── coaching_repository.dart
-│   │   │   └── user_repository.dart
-│   │   ├── services/                  # External service wrappers
-│   │   │   ├── ai_service.dart        # Food recognition API calls
-│   │   │   ├── push_service.dart      # FCM configuration
-│   │   │   ├── analytics_service.dart # PostHog events
-│   │   │   └── subscription_service.dart # RevenueCat
-│   │   └── local/                     # Local database (Drift)
-│   │       ├── database.dart
-│   │       └── tables/
-│   ├── providers/                     # Riverpod providers
-│   │   ├── auth_providers.dart
-│   │   ├── meal_providers.dart
-│   │   ├── dashboard_providers.dart
-│   │   └── coaching_providers.dart
-│   └── ui/
-│       ├── screens/
-│       │   ├── onboarding/
-│       │   ├── camera/                # Camera capture screen
-│       │   ├── meal_review/           # AI results review and confirm
-│       │   ├── dashboard/             # Daily calorie and macro view
-│       │   ├── history/               # Past meal feed
-│       │   ├── insights/              # Coaching insights screen
-│       │   ├── settings/              # Profile, goals, subscription
-│       │   └── paywall/               # Premium upgrade screen
-│       ├── widgets/                   # Shared reusable widgets
-│       │   ├── calorie_ring.dart
-│       │   ├── macro_bar.dart
-│       │   ├── meal_card.dart
-│       │   ├── portion_slider.dart
-│       │   └── known_meal_chip.dart
-│       └── shared/                    # Shared layouts, dialogs
+│   ├── main.dart                      # Entry point: Firebase, Supabase, ProviderScope
+│   ├── controllers/                   # Riverpod notifiers
+│   │   ├── auth_controller.dart       # Auth state, sign up/in/out, userProfileProvider
+│   │   ├── camera_controller.dart     # Camera init, permission handling
+│   │   ├── log_controller.dart        # Daily meal aggregation, paywall gate, water tracking
+│   │   └── meal_controller.dart       # AI pipeline orchestration (upload → analyse → review → save)
+│   ├── models/                        # Data classes
+│   │   ├── food_item.dart             # Individual food (calories, macros, confidence)
+│   │   ├── meal_log.dart              # Complete meal (items + totals)
+│   │   ├── known_meal.dart            # Frequent meal for one-tap logging
+│   │   └── user_profile.dart          # User goals, body stats, subscription tier
+│   ├── services/
+│   │   └── notification_service.dart  # FCM + local notifications with smart suppression
+│   ├── views/
+│   │   ├── auth/
+│   │   │   └── onboarding_screen.dart # Sign up / sign in
+│   │   ├── shell/
+│   │   │   └── app_shell.dart         # StatefulShellRoute shell: bottom nav + centre FAB
+│   │   ├── dashboard/
+│   │   │   └── dashboard_screen.dart  # Home: calorie ring, macro bars, today's meals, water
+│   │   ├── capture/
+│   │   │   └── add_food_sheet.dart    # + FAB entry point: Photo / Gallery / Barcode / Quick Add
+│   │   ├── camera/
+│   │   │   └── camera_screen.dart     # Full-screen camera capture (accessed from AddFoodSheet)
+│   │   ├── barcode/
+│   │   │   └── barcode_screen.dart    # Barcode scanning + Open Food Facts lookup
+│   │   ├── history/
+│   │   │   └── history_screen.dart    # Past meals by date with detail sheet
+│   │   ├── profile/
+│   │   │   └── profile_screen.dart    # Settings, goal editor, body stats, subscription
+│   │   ├── review/
+│   │   │   ├── review_sheet.dart      # AI meal confirmation with DraggableScrollableSheet
+│   │   │   └── food_item_card.dart    # Per-item portion slider
+│   │   ├── quick_add/
+│   │   │   └── quick_add_sheet.dart   # Manual entry: name + calories + optional macros
+│   │   └── paywall/
+│   │       └── paywall_sheet.dart     # Premium upgrade sheet
+│   ├── widgets/                       # Shared reusable widgets
+│   │   ├── labeled_text_field.dart    # Haptic-on-focus text input with label
+│   │   ├── sheet_handle.dart          # Bottom sheet drag handle
+│   │   └── tavera_loading.dart        # Loading indicator
+│   └── core/
+│       ├── config/
+│       │   ├── app_config.dart        # API keys (move to --dart-define for production)
+│       │   └── env.dart               # --dart-define environment variable access
+│       ├── router/
+│       │   └── app_router.dart        # GoRouter: StatefulShellRoute (tabs) + modal routes (camera, barcode)
+│       └── theme/
+│           ├── app_colors.dart        # Colour palette (background, surface, accent lime #B8FF65)
+│           ├── app_text_styles.dart   # Typography scale
+│           └── app_theme.dart         # Dark mode MaterialApp theme
 ├── supabase/
-│   ├── migrations/                    # Database migration SQL files
-│   ├── seed.sql                       # USDA food data import
-│   └── functions/                     # Edge Functions
-│       ├── process-meal-photo/
-│       ├── generate-coaching/
-│       ├── schedule-notifications/
-│       └── webhook-revenuecat/
-├── test/                              # Unit and widget tests
+│   ├── migrations/                    # PostgreSQL migration SQL files
+│   ├── seed.sql                       # Food database import
+│   └── functions/
+│       └── analyse-meal/              # Edge Function: image → GPT-4o Vision → structured JSON
+├── test/                              # Unit tests (models round-trip)
 ├── integration_test/                  # Integration tests
-├── assets/                            # Images, fonts, animations
-├── .env                               # Local environment (gitignored)
-├── .env.example                       # Template for environment variables
+├── assets/images/                     # App images
 ├── pubspec.yaml                       # Flutter dependencies
 ├── analysis_options.yaml              # Dart linting rules
+├── ROADMAP.md                         # Development roadmap
 └── README.md                          # Setup and contribution guide
+```
+
+### Navigation Architecture
+
+The router uses `StatefulShellRoute.indexedStack` for the three main tabs. Camera and barcode are top-level routes outside the shell so they cover the full screen:
+
+```
+GoRouter
+├── /onboarding                         ← unauthenticated only
+├── StatefulShellRoute (AppShell)       ← main app; shows bottom nav
+│   ├── branch[0]: /                    → DashboardScreen
+│   ├── branch[1]: /nutrition           → HistoryScreen
+│   └── branch[2]: /profile             → ProfileScreen
+│       (FAB in AppShell opens AddFoodSheet via showModalBottomSheet)
+├── /camera                             ← full-screen modal (slide up)
+└── /barcode                            ← full-screen modal (slide in)
 ```
 
 ---

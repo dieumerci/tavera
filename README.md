@@ -1,6 +1,6 @@
 # Tavera
 
-**AI-powered photo calorie tracker. Snap. Confirm. Done.**
+**AI-powered calorie tracker. Tap +. Snap. Confirm. Done.**
 
 Tavera is a cross-platform mobile application that uses computer vision to estimate calories and macronutrients from a photo of your meal in under five seconds. It replaces the tedious manual food database search that causes 70% of users to abandon calorie tracking within two weeks. The app learns your eating patterns over time, pre-fills frequent meals with one tap, and delivers weekly AI coaching insights personalised to your nutrition habits.
 
@@ -8,11 +8,11 @@ Tavera is a cross-platform mobile application that uses computer vision to estim
 
 ## Current State
 
-**Status:** Pre-Development (March 2026)  
-**Version:** 0.0.0  
+**Status:** Phase 1 Complete · Phase 2 In Progress (March 2026)
+**Version:** 1.0.0
 **Platforms:** iOS 15+, Android 10+ (API 29+)
 
-Tavera is in the documentation and planning phase. No code has been written yet. The concept, system architecture, database schema, technology stack, roadmap, and pricing strategy are fully documented and ready for development to begin.
+The core logging pipeline is fully working end-to-end. A user can open the app, see their daily Dashboard, tap the + button to log a meal (via camera, gallery, barcode, or manual entry), confirm AI-identified food items, and see their calorie and macro progress update in real time.
 
 ### Documentation
 
@@ -20,24 +20,55 @@ All project documentation lives in the `docs/` directory:
 
 | Document | Description |
 |----------|-------------|
-| [docs/CONCEPT.md](docs/CONCEPT.md) | Full product concept, target audience, competitive positioning, and core values |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture, tech stack, database schema, AI pipeline, security model, and folder structure |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | Five-phase development roadmap with detailed checklists for every feature |
-| [docs/PRICING.md](docs/PRICING.md) | Freemium model, subscription tiers, regional pricing, paywall strategy, and revenue projections |
+| [docs/CONCEPT.md](docs/CONCEPT.md) | Product concept, target audience, competitive positioning, and core values |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture, tech stack, database schema, AI pipeline, security model |
+| [ROADMAP.md](ROADMAP.md) | Five-phase development roadmap with detailed checklists for every feature |
+| [docs/PRICING.md](docs/PRICING.md) | Freemium model, subscription tiers, regional pricing, paywall strategy |
 
-If you are a new developer joining this project, read the documents in the order listed above. The Concept document explains what Tavera is and why it exists. The Architecture document explains how it is built. The Roadmap document explains what to build and in what order. The Pricing document explains how it makes money.
+If you are a new developer joining this project, read the documents in the order listed above.
 
 ---
 
 ## What Tavera Does
 
-Tavera solves one problem: calorie tracking is effective but unsustainable because manual food logging is exhausting. Tavera makes logging fast enough to be habitual.
+Tavera solves one problem: calorie tracking is effective but unsustainable because manual food logging is exhausting. Tavera makes logging fast enough to become habitual.
 
-The core interaction is: open the app, point the camera at your food, tap capture, review the AI's calorie and macro estimate, tap confirm. Total time: under ten seconds. Over time, the app learns what you eat regularly and offers those meals as one-tap options, reducing logging time to under three seconds for known meals.
+**The core interaction:**
+1. Open the app → **Dashboard shows your day at a glance**
+2. Tap the **+ button** in the navigation bar → choose how to log (photo, gallery, barcode, or manual)
+3. AI identifies your food in under 5 seconds
+4. Tap confirm → dashboard updates instantly
 
-Beyond logging, Tavera provides a daily calorie and macro dashboard, a meal history feed, and weekly AI coaching insights that identify patterns in your eating and suggest specific, actionable changes. The coaching layer is what differentiates Tavera from a simple camera tool — it transforms tracking data into behaviour change.
+Over time, the app learns what you eat regularly and offers those meals as one-tap options, reducing logging time to under three seconds for known meals.
 
-Tavera is not a diet app. It does not prescribe what to eat, shame users for their choices, or promote any specific dietary philosophy. It provides clarity about what you eat so you can make informed decisions. The tone is warm, neutral, and supportive.
+Beyond logging, Tavera provides a real-time daily calorie and macro dashboard, a complete meal history, weekly AI coaching insights, and — in Phase 2 — social accountability challenges and a personalised AI meal planner with grocery list integration.
+
+Tavera is not a diet app. It does not prescribe what to eat, shame users for their choices, or promote any specific dietary philosophy. It provides clarity about what you eat so you can make informed decisions.
+
+---
+
+## App Flow
+
+```
+App Launch
+    └─► Dashboard (home screen)
+            ├─ Calorie ring: consumed vs. goal
+            ├─ Macro bars: protein / carbs / fat
+            ├─ Stat chips row
+            ├─ Water intake card
+            └─ Today's meals list
+
+Bottom Navigation
+    ├─ Home       → Dashboard
+    ├─ History    → Meal history by date
+    ├─ [+ FAB]    → AddFoodSheet ──► Take Photo    → Camera screen → AI → Review
+    │                               ├─► Upload Photo → Gallery → AI → Review
+    │                               ├─► Scan Barcode → Barcode screen → Log
+    │                               └─► Quick Add   → Manual entry form
+    └─ Profile    → Settings, goals, subscription
+```
+
+**Note:** Steps / activity tracking is explicitly out of scope.
 
 ---
 
@@ -49,18 +80,15 @@ Tavera is not a diet app. It does not prescribe what to eat, shame users for the
 |-----------|---------|
 | **Flutter 3.22+** | Cross-platform mobile framework (iOS and Android from one codebase) |
 | **Dart 3.4+** | Programming language for Flutter |
-| **Riverpod 2.x** | State management |
-| **GoRouter** | Declarative navigation with deep linking |
-| **Dio** | HTTP client with interceptors |
-| **Drift (SQLite)** | Local structured database for offline support |
-| **Hive** | Lightweight key-value local cache |
-| **Freezed** | Immutable data class code generation |
+| **Riverpod 2.x** | Reactive state management |
+| **GoRouter 14.x** | Declarative navigation with `StatefulShellRoute` for tab state preservation |
+| **Drift (SQLite)** | Local structured database for offline support (Phase 2) |
 
 ### Backend
 
 | Technology | Purpose |
 |-----------|---------|
-| **Supabase** | Backend-as-a-service: auth, PostgreSQL database, file storage, edge functions, realtime |
+| **Supabase** | Auth, PostgreSQL database, file storage, edge functions |
 | **PostgreSQL 15+** | Primary database (managed by Supabase) |
 | **Supabase Edge Functions** | Serverless API endpoints (Deno/TypeScript) |
 | **Supabase Auth** | Authentication (email, Apple Sign-In, Google Sign-In) |
@@ -70,40 +98,30 @@ Tavera is not a diet app. It does not prescribe what to eat, shame users for the
 
 | Technology | Purpose |
 |-----------|---------|
-| **Google Cloud Vision API** | Food item identification from photos (MVP) |
-| **Google Vertex AI** | Custom food recognition model (future, post-scale) |
-| **OpenAI API (GPT-4o-mini)** | Weekly coaching insight generation |
-| **USDA FoodData Central** | Primary nutritional database (380K+ verified foods) |
+| **OpenAI GPT-4o Vision** | Food identification from photos (MVP) |
+| **OpenAI API (GPT-4o)** | Weekly coaching insight generation, AI meal planner (Phase 2) |
 | **Open Food Facts** | International packaged food and barcode database |
+| **USDA FoodData Central** | Primary nutritional reference database |
 
 ### Services & Infrastructure
 
 | Technology | Purpose |
 |-----------|---------|
-| **RevenueCat** | Cross-platform subscription management (App Store + Google Play) |
+| **RevenueCat** | Cross-platform subscription management (Phase 2) |
 | **Firebase Cloud Messaging** | Push notifications (iOS and Android) |
-| **PostHog** | Product analytics, funnels, feature flags |
+| **PostHog** | Product analytics, funnels, feature flags (Phase 2) |
 | **Sentry** | Crash reporting and error monitoring |
-| **Resend** | Transactional email (welcome, password reset, weekly summaries) |
-
-### Distribution
-
-| Platform | Purpose |
-|----------|---------|
-| **Apple App Store** | iOS distribution (requires Apple Developer Program, $99/year) |
-| **Google Play Store** | Android distribution (requires Google Play Developer account, $25 one-time) |
+| **Resend** | Transactional email |
 
 ---
 
 ## Languages Used
 
-**Dart** — The primary language. All mobile client code is written in Dart via the Flutter framework. This includes the UI, state management, local database operations, HTTP networking, camera integration, and offline sync logic. Dart was chosen because Flutter is the fastest path to a high-quality cross-platform mobile app from a single codebase, and Dart's null safety, pattern matching, and async/await model make it productive for a small team.
+**Dart** — All mobile client code. UI, state management, local database, HTTP networking, camera integration.
 
-**TypeScript** — Used for Supabase Edge Functions (which run on Deno). All serverless backend logic is written in TypeScript: the AI processing orchestration, coaching engine, push notification scheduling, and subscription webhook handling. TypeScript was chosen because it is the native language of Supabase Edge Functions and provides strong typing that reduces runtime errors in critical backend paths.
+**TypeScript** — Supabase Edge Functions (Deno runtime). AI processing orchestration, coaching engine, challenge notification system, grocery list generation, subscription webhook handling.
 
-**SQL** — Used for database migrations, Row-Level Security policies, and complex queries (known meal detection, food fuzzy matching, weekly meal aggregation for coaching). PostgreSQL-specific features are used extensively: `pg_trgm` for fuzzy text search, `jsonb` for flexible data storage, and database triggers for automatic timestamp management.
-
-**Python** — Not used in the production application, but may be used for data processing scripts (USDA data import, food database maintenance, AI model training scripts) and for any future custom machine learning model development on Vertex AI. Python is the standard language for ML model training and evaluation.
+**SQL** — Database migrations, Row-Level Security policies, complex queries (known meal detection, challenge scoring, weekly meal aggregation).
 
 ---
 
@@ -111,27 +129,15 @@ Tavera is not a diet app. It does not prescribe what to eat, shame users for the
 
 ### Prerequisites
 
-You need the following installed before working on Tavera:
-
-1. **Flutter SDK 3.22+** — Follow the [official installation guide](https://docs.flutter.dev/get-started/install). Run `flutter doctor` after installation to verify all dependencies.
-
-2. **Android Studio** — Install with Android SDK (API 29 through 34). Create at least one AVD (Android Virtual Device) for testing. Recommended: Pixel 7 emulator with API 34.
-
-3. **Xcode 15+** (macOS only) — Required for iOS builds. Install from the Mac App Store. Open Xcode once to accept the license and install command-line tools.
-
-4. **Supabase CLI** — Install with `npm install -g supabase`. Used for local development, migrations, and Edge Function development.
-
+1. **Flutter SDK 3.22+** — Run `flutter doctor` after installation to verify all dependencies.
+2. **Android Studio** — Install with Android SDK (API 29+).
+3. **Xcode 15+** (macOS only) — Required for iOS builds.
+4. **Supabase CLI** — `npm install -g supabase`
 5. **Node.js 20+** — Required for Supabase CLI.
-
-6. **Deno** — Required for Edge Function development. Install with `curl -fsSL https://deno.land/install.sh | sh`.
-
-7. **Google Cloud CLI** — Install from [cloud.google.com/sdk](https://cloud.google.com/sdk/docs/install). Authenticate with `gcloud auth login`. Enable the Cloud Vision API on your project.
-
-8. **Git** — For version control.
+6. **Deno** — `curl -fsSL https://deno.land/install.sh | sh`
+7. **Git** — For version control.
 
 ### Getting Started
-
-Clone the repository:
 
 ```bash
 git clone https://github.com/your-org/tavera.git
@@ -144,17 +150,15 @@ Copy the environment template and fill in your credentials:
 cp .env.example .env
 ```
 
-The `.env` file requires the following values:
+The `.env` file requires:
 
 ```
 SUPABASE_URL=https://your-project-ref.supabase.co
 SUPABASE_ANON_KEY=your-supabase-anon-key
-GOOGLE_CLOUD_VISION_API_KEY=your-google-cloud-api-key
 OPENAI_API_KEY=your-openai-api-key
-REVENUECAT_API_KEY=your-revenuecat-api-key
+REVENUECAT_API_KEY=your-revenuecat-api-key  # Phase 2
 SENTRY_DSN=your-sentry-dsn
-POSTHOG_API_KEY=your-posthog-api-key
-RESEND_API_KEY=your-resend-api-key
+POSTHOG_API_KEY=your-posthog-api-key        # Phase 2
 ```
 
 Install Flutter dependencies:
@@ -163,33 +167,14 @@ Install Flutter dependencies:
 flutter pub get
 ```
 
-Run code generation (for Freezed data classes and Riverpod providers):
-
-```bash
-dart run build_runner build --delete-conflicting-outputs
-```
-
-Start a local Supabase instance for development:
+Start a local Supabase instance:
 
 ```bash
 supabase start
-```
-
-This starts a local PostgreSQL database, Auth server, Storage server, and Edge Function runtime. The local Supabase URL and keys are printed to the console — use these in your `.env` for local development.
-
-Apply database migrations:
-
-```bash
 supabase db push
 ```
 
-Seed the food database (this may take several minutes due to the size of the USDA dataset):
-
-```bash
-supabase db seed
-```
-
-Run the app on an emulator or connected device:
+Run the app:
 
 ```bash
 flutter run
@@ -204,28 +189,21 @@ flutter test
 # Integration tests (requires a running emulator)
 flutter test integration_test/
 
-# Edge Function tests (requires Supabase running locally)
-supabase functions serve process-meal-photo --env-file .env
-# Then test with curl or the Supabase dashboard
+# Edge Function tests
+supabase functions serve analyse-meal --env-file .env
 ```
 
 ### Building for Release
 
 **Android:**
-
 ```bash
 flutter build appbundle --release
 ```
 
-The `.aab` file is generated at `build/app/outputs/bundle/release/app-release.aab`. Upload this to Google Play Console.
-
 **iOS:**
-
 ```bash
 flutter build ipa --release
 ```
-
-The `.ipa` file is generated at `build/ios/ipa/tavera.ipa`. Upload this via Xcode Organizer or Transporter to App Store Connect.
 
 ---
 
@@ -234,69 +212,77 @@ The `.ipa` file is generated at `build/ios/ipa/tavera.ipa`. Upload this via Xcod
 ```
 tavera/
 ├── docs/
-│   ├── CONCEPT.md          # Product concept and vision
-│   ├── ARCHITECTURE.md     # System design and technical specification
-│   ├── ROADMAP.md          # Development roadmap with checklists
-│   └── PRICING.md          # Monetisation strategy and pricing
-├── lib/                    # Flutter application source code
-│   ├── main.dart           # Entry point
-│   ├── app.dart            # MaterialApp configuration
-│   ├── router.dart         # GoRouter route definitions
-│   ├── theme/              # App theme, colours, typography
-│   ├── core/               # Constants, exceptions, extensions, utilities
-│   ├── config/             # Environment and Supabase configuration
-│   ├── data/
-│   │   ├── models/         # Freezed data classes
-│   │   ├── repositories/   # Data access layer
-│   │   ├── services/       # External service wrappers
-│   │   └── local/          # Drift local database
-│   ├── providers/          # Riverpod providers
-│   └── ui/
-│       ├── screens/        # App screens (camera, dashboard, history, etc.)
-│       ├── widgets/        # Shared reusable widgets
-│       └── shared/         # Shared layouts and dialogs
+│   ├── CONCEPT.md              # Product concept and vision
+│   ├── ARCHITECTURE.md         # System design and technical specification
+│   └── PRICING.md              # Monetisation strategy and pricing
+├── ROADMAP.md                  # Development roadmap with checklists
+├── lib/
+│   ├── main.dart               # Entry point (Firebase, Supabase, ProviderScope)
+│   ├── controllers/            # Riverpod notifiers (auth, camera, log, meal)
+│   ├── models/                 # Data classes (FoodItem, MealLog, UserProfile, etc.)
+│   ├── services/               # External service wrappers (notifications)
+│   ├── views/
+│   │   ├── auth/               # Onboarding & sign-in screen
+│   │   ├── shell/              # AppShell — persistent bottom nav + FAB
+│   │   ├── dashboard/          # Home screen (calorie ring, macros, today's meals)
+│   │   ├── capture/            # AddFoodSheet — entry point for all logging methods
+│   │   ├── camera/             # Full-screen camera capture (accessed via + FAB)
+│   │   ├── barcode/            # Barcode scanning
+│   │   ├── history/            # Meal history by date
+│   │   ├── profile/            # Settings, goals, subscription
+│   │   ├── review/             # AI meal confirmation sheet
+│   │   ├── quick_add/          # Manual entry form
+│   │   └── paywall/            # Premium upgrade sheet
+│   ├── widgets/                # Shared reusable widgets
+│   └── core/
+│       ├── config/             # AppConfig, environment variables
+│       ├── router/             # GoRouter with StatefulShellRoute
+│       └── theme/              # Colors, typography, dark theme
 ├── supabase/
-│   ├── migrations/         # PostgreSQL migration files
-│   ├── seed.sql            # Food database import script
-│   └── functions/          # Edge Functions (TypeScript/Deno)
-├── test/                   # Unit and widget tests
-├── integration_test/       # Integration tests
-├── assets/                 # Images, fonts, animations
-├── .env.example            # Environment variable template
-├── pubspec.yaml            # Flutter dependencies
-├── analysis_options.yaml   # Dart linting configuration
-└── README.md               # This file
+│   ├── migrations/             # PostgreSQL migration files
+│   ├── seed.sql                # Food database import
+│   └── functions/              # Edge Functions (TypeScript/Deno)
+├── test/                       # Unit and widget tests
+├── integration_test/           # Integration tests
+└── pubspec.yaml                # Flutter dependencies
 ```
 
 ---
 
-## Future Plans
+## Roadmap Summary
 
-The full roadmap is documented in [docs/ROADMAP.md](docs/ROADMAP.md). In summary:
+See [ROADMAP.md](ROADMAP.md) for the full checklist. In summary:
 
-**Phase 1 (Current Target):** Camera-first calorie logging with AI food recognition, daily dashboard, meal history, barcode scanning, offline support, and push notifications. Beta release to 20–50 testers.
+**Phase 1 (✅ Complete):** Dashboard-first UX, camera-to-log AI pipeline, barcode scanning, manual quick-add, meal history, push notifications with smart suppression, calorie and macro tracking, water tracking, haptic feedback system-wide.
 
-**Phase 2:** Adaptive meal memory (known meal pre-filling), AI coaching insights, premium subscription with RevenueCat, paywall implementation, analytics, and public launch on both app stores.
+**Phase 2 (🔄 In Progress):** Adaptive meal memory, AI coaching insights, subscription with RevenueCat, paywall, PostHog analytics, Social Accountability Challenges, AI Meal Planner with grocery list integration, public launch.
 
-**Phase 3:** Restaurant menu scanning, wearable integration (Apple HealthKit, Google Health Connect), meal scoring, consistency streaks, weekly trend visualisations, fasting timer, grocery list generation, and multi-language support.
+**Phase 3:** Restaurant menu scanning, HealthKit/Health Connect integration (workout activity only — no step tracking), meal scoring, consistency streaks, grocery delivery integration (Instacart, Amazon Fresh), expanded Social Challenges.
 
-**Phase 4:** AI-powered meal planning from personal meal history, grocery list generation from meal plans, accountability partner feature, GLP-1 medication tracking mode, recipe URL import, and food recognition model improvement feedback loop.
+**Phase 4:** AI meal planning maturity, accountability partner feature, GLP-1 tracking mode, recipe URL import.
 
-**Phase 5:** Professional accounts for dietitians and nutritionists, corporate wellness program support, custom food recognition model training on accumulated data, and food delivery API integrations.
+**Phase 5:** Professional accounts for dietitians, corporate wellness, custom food recognition model.
+
+---
+
+## Key Product Decisions
+
+- **Dashboard first.** The app opens to the Dashboard, not the camera. Food capture is always triggered by the + FAB. This lowers the activation barrier and reinforces the tracking habit.
+- **No step tracking.** Steps / pedometer integration is explicitly out of scope.
+- **Subscription flexibility.** The paywall and monetisation model are not yet finalised. Feature gates are built behind a `SubscriptionService` abstraction so the model can change without rewrites.
+- **OpenAI for vision, not Google Cloud Vision.** Chosen for the MVP because it handles food recognition and nutrition estimation in a single API call. GCV + USDA lookup remains the plan for a custom trained model in Phase 3.
 
 ---
 
 ## Contributing
 
-Tavera is currently a private project. If you are a developer who has been invited to contribute, please read all four documents in the `docs/` directory before writing any code. The Architecture document contains the complete folder structure, coding conventions, and package decisions. The Roadmap document contains the specific checklist of what needs to be built and in what order.
-
-All code changes must go through a pull request to `main`. PRs require at least one review. Write tests for any new feature or bug fix. Follow the linting rules in `analysis_options.yaml` without exceptions.
+Tavera is currently a private project. If you are a developer who has been invited to contribute, read all documents in the `docs/` directory before writing any code. All changes go through pull requests to `main`. Write tests for new features. Follow the linting rules in `analysis_options.yaml`.
 
 ---
 
 ## License
 
-Proprietary. All rights reserved. This software is not open source.
+Proprietary. All rights reserved.
 
 ---
 

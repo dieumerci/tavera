@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../controllers/auth_controller.dart';
 import '../../controllers/challenge_controller.dart';
+import '../../controllers/fasting_controller.dart';
 import '../../controllers/log_controller.dart';
 import '../../core/config/app_config.dart';
 import '../../services/haptic_service.dart';
@@ -210,6 +211,9 @@ class ProfileScreen extends ConsumerWidget {
             ),
           ),
 
+          // Net Carbs toggle
+          _NetCarbsTile(netCarbsMode: profile?.netCarbsMode ?? false),
+
           const SizedBox(height: 24),
 
           // ── Subscription section ───────────────────────────────────
@@ -264,6 +268,7 @@ class ProfileScreen extends ConsumerWidget {
             value: 'View',
             onTap: () => context.push('/challenges'),
           ),
+          _FastingTile(),
 
           const SizedBox(height: 24),
 
@@ -963,6 +968,85 @@ class _NotificationTileState extends ConsumerState<_NotificationTile> {
     );
   }
 }
+
+// ─── Net Carbs Toggle ─────────────────────────────────────────────────────────
+
+class _NetCarbsTile extends ConsumerWidget {
+  final bool netCarbsMode;
+  const _NetCarbsTile({required this.netCarbsMode});
+
+  Future<void> _toggle(bool value, WidgetRef ref) async {
+    HapticService.selection();
+    final session = Supabase.instance.client.auth.currentSession;
+    if (session == null) return;
+    await Supabase.instance.client
+        .from('profiles')
+        .update({'net_carbs_mode': value})
+        .eq('id', session.user.id);
+    // userProfileProvider is a StreamProvider — it will auto-update via
+    // Supabase Realtime, so no manual invalidation is needed here.
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.grain_rounded,
+              color: AppColors.textSecondary, size: 20),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Net Carbs mode', style: AppTextStyles.bodyLarge),
+                const SizedBox(height: 2),
+                Text(
+                  'Show carbs − fiber in all macro displays',
+                  style: AppTextStyles.caption
+                      .copyWith(color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            value: netCarbsMode,
+            activeThumbColor: AppColors.accent,
+            activeTrackColor: AppColors.accentMuted,
+            onChanged: (v) => _toggle(v, ref),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Fasting Tile ─────────────────────────────────────────────────────────────
+
+class _FastingTile extends ConsumerWidget {
+  const _FastingTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final fastAsync = ref.watch(fastingControllerProvider);
+    final isActive = fastAsync.valueOrNull?.isActive == true;
+
+    return _Tile(
+      icon: Icons.timer_outlined,
+      label: 'Intermittent Fasting',
+      value: isActive ? 'Active' : 'Start',
+      onTap: () => context.push('/fasting'),
+    );
+  }
+}
+
+// ─── Upgrade Banner ───────────────────────────────────────────────────────────
 
 class _UpgradeBanner extends StatelessWidget {
   final VoidCallback onTap;

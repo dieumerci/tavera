@@ -336,19 +336,19 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 > **Source:** March 2026 competitive analysis vs. CalZen AI, BitePal, MyFitnessPal, MyNetDiary, Cal AI, Lose It!. Positioning: *"The insight app — other apps tell users what they ate; Tavera tells them what it means."*
 
 #### Intermittent Fasting Timer _(Priority 1 — Low effort, High impact)_
-- [ ] Add IF timer screen: customisable protocols (16:8, 18:6, 20:4, 5:2), visual countdown ring, start/stop/reset controls
-- [ ] Store active fast in Supabase `daily_stats` or a new `fasting_sessions` table
-- [ ] Show fasting window on Dashboard when a fast is active (replace or extend water card)
-- [ ] Fasting history tab: streak count, longest fast, success rate
-- [ ] Smart calorie gate: suppress meal logging prompts during fasting window; resume automatically when eating window opens
+- ✅ Add IF timer screen: customisable protocols (16:8, 18:6, 20:4, OMAD), animated countdown ring (`CustomPainter` arc), start/stop with confirm dialog
+- ✅ Store active fast in new `fasting_sessions` Supabase table (migration 007) with RLS
+- ✅ Show fasting card on Dashboard when a fast is active — live progress bar + HH:MM:SS countdown via `Timer.periodic` on the card's own `StatefulWidget`
+- ✅ Fasting history: last 14 completed sessions with completion badge, duration, and date
+- ✅ Fasting tile in Profile → Features section with "Active" badge when running
+- [ ] Smart calorie gate: suppress meal logging prompts during fasting window
 - [ ] Gate behind premium (or free tier — evaluate at launch)
 
 #### Net Carbs Toggle _(Priority 4 — Low effort, Medium impact)_
-- [ ] Add `showNetCarbs` bool to `UserProfile` and persist to `profiles.net_carbs_mode`
-- [ ] Add toggle in Profile → Goals section
-- [ ] Wherever carbs are displayed (dashboard, history, review sheet), show `carbs - fiber` when mode is on
-- [ ] Update macro bars and coaching insights to use net carbs in this mode
-- [ ] Gate behind premium or keep free (keto audience acquisition play)
+- ✅ Add `netCarbsMode` bool to `UserProfile` and persist to `profiles.net_carbs_mode` (migration 007)
+- ✅ Add toggle tile in Profile → Goals section (live-updates via Realtime stream)
+- [ ] Wherever carbs are displayed (dashboard, history, review sheet), show `carbs − fiber` when mode is on — awaiting fiber field in `meal_logs` + Edge Function update
+- [ ] Update coaching insights to use net carbs in prompt when mode is on
 
 ### Analytics
 

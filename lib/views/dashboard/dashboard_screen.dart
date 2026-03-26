@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -9,7 +10,9 @@ import 'package:intl/intl.dart';
 import '../../controllers/auth_controller.dart';
 import '../../controllers/challenge_controller.dart';
 import '../../controllers/coaching_controller.dart';
+import '../../controllers/fasting_controller.dart';
 import '../../controllers/known_meal_controller.dart';
+import '../../models/fasting_session.dart';
 import '../../controllers/log_controller.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
@@ -32,6 +35,7 @@ class DashboardScreen extends ConsumerWidget {
     final water = ref.watch(waterMlProvider);
 
     // Phase 2 providers — all optional; empty/null = section hidden
+    final activeFast = ref.watch(fastingControllerProvider).valueOrNull;
     final knownMeals = ref.watch(topKnownMealsProvider);
     final unreadInsights = ref.watch(unreadInsightCountProvider);
     final weeklyCalories = ref.watch(weeklyCaloriesProvider).valueOrNull;
@@ -202,6 +206,17 @@ class DashboardScreen extends ConsumerWidget {
             ),
 
             const SliverToBoxAdapter(child: SizedBox(height: 20)),
+
+            // ── Fasting card (shown when a fast is active) ──────────────────
+            if (activeFast != null && activeFast.isActive) ...[
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: _FastingCard(session: activeFast),
+                ),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 16)),
+            ],
 
             // ── Phase 2: Known meals quick-tap row ──────────────────────────
             if (knownMeals.isNotEmpty) ...[
@@ -1366,6 +1381,135 @@ class _ChallengeStrip extends StatelessWidget {
               Icons.chevron_right_rounded,
               color: AppColors.textTertiary,
               size: 20,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Fasting card ─────────────────────────────────────────────────────────────
+//
+// Shows when an IF fast is active. Taps through to the full FastingScreen.
+// The StatefulWidget owns a Timer so the progress bar and label tick live
+// without rebuilding the whole dashboard provider tree.
+
+class _FastingCard extends StatefulWidget {
+  final FastingSession session;
+  const _FastingCard({required this.session});
+
+  @override
+  State<_FastingCard> createState() => _FastingCardState();
+}
+
+class _FastingCardState extends State<_FastingCard> {
+  late Timer _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.session;
+    final progress = s.progress;
+    final remaining = s.remaining;
+    final goalReached = s.isGoalReached;
+
+    final hh = remaining.inHours.toString().padLeft(2, '0');
+    final mm = remaining.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final ss = remaining.inSeconds.remainder(60).toString().padLeft(2, '0');
+    final timeStr = goalReached ? 'Goal reached!' : '$hh:$mm:$ss left';
+
+    return GestureDetector(
+      onTap: () {
+        HapticService.selection();
+        context.push('/fasting');
+      },
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: goalReached
+                ? AppColors.success.withValues(alpha: 0.4)
+                : AppColors.accent.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Row(
+          children: [
+            // Icon
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: goalReached
+                    ? AppColors.success.withValues(alpha: 0.12)
+                    : AppColors.accentMuted,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                goalReached
+                    ? Icons.check_circle_outline_rounded
+                    : Icons.timer_outlined,
+                color: goalReached ? AppColors.success : AppColors.accent,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 14),
+            // Text + progress
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '${s.protocol.label} Fast',
+                        style: AppTextStyles.labelLarge,
+                      ),
+                      Text(
+                        timeStr,
+                        style: AppTextStyles.caption.copyWith(
+                          color: goalReached
+                              ? AppColors.success
+                              : AppColors.accent,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 5,
+                      backgroundColor: AppColors.border,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        goalReached ? AppColors.success : AppColors.accent,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${(progress * 100).toStringAsFixed(0)}% complete · tap to manage',
+                    style: AppTextStyles.caption.copyWith(fontSize: 10),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
