@@ -11,6 +11,8 @@ import 'core/theme/app_theme.dart';
 import 'firebase_options.dart';
 import 'services/analytics_service.dart';
 import 'services/notification_service.dart';
+import 'services/revenue_cat_service.dart';
+import 'services/subscription_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,6 +36,7 @@ Future<void> main() async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await NotificationService.initialise();
   await AnalyticsService.initialise();
+  await RevenueCatService.configure();
 
   await Supabase.initialize(
     url: AppConfig.supabaseUrl,
@@ -56,15 +59,22 @@ class TaveraApp extends ConsumerWidget {
     ref.listen(authStateProvider, (_, authAsync) {
       final session = authAsync.valueOrNull?.session;
       if (session != null) {
+        final userId = session.user.id;
+        // PostHog identity
         AnalyticsService.identify(
-          session.user.id,
+          userId,
           properties: {
-            if (session.user.email case final String email)
-              'email': email,
+            if (session.user.email case final String email) 'email': email,
           },
         );
+        // RevenueCat identity — links purchase records to this Supabase user
+        RevenueCatService.identify(userId);
+        // Refresh entitlement cache for the newly-signed-in user
+        ref.invalidate(revenueCatPremiumProvider);
       } else {
         AnalyticsService.reset();
+        RevenueCatService.reset();
+        ref.invalidate(revenueCatPremiumProvider);
       }
     });
 
