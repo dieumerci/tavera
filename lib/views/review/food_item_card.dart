@@ -152,6 +152,32 @@ class _FoodItemCardState extends ConsumerState<FoodItemCard> {
             ],
           ),
 
+          // ── Low confidence hint ────────────────────────────────────
+          if (_base.confidenceScore < 0.5)
+            GestureDetector(
+              onTap: () {
+                HapticService.selection();
+                _showEditSheet(context);
+              },
+              child: Padding(
+                padding: const EdgeInsets.only(top: 6, bottom: 2),
+                child: Row(
+                  children: [
+                    const Icon(Icons.warning_amber_rounded,
+                        size: 13, color: AppColors.danger),
+                    const SizedBox(width: 5),
+                    Text(
+                      'Low confidence — tap to correct',
+                      style: AppTextStyles.caption.copyWith(
+                        color: AppColors.danger,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
           // ── Portion slider ─────────────────────────────────────────
           // Visible directly on the card — swipe left/right to adjust
           // portion from 0.5× (half) to 3.0× (triple) in 0.5× steps.
