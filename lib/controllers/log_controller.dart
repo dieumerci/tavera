@@ -1,3 +1,5 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -5,6 +7,7 @@ import '../core/config/app_config.dart';
 import '../models/food_item.dart';
 import '../models/meal_log.dart';
 import '../models/user_profile.dart';
+import 'challenge_controller.dart' show myChallengesProvider;
 
 // ── Daily summary state ─────────────────────────────────────────────────────
 
@@ -228,6 +231,49 @@ class _WaterNotifier extends StateNotifier<int> {
   }
 }
 
+// ── Challenge scoring ────────────────────────────────────────────────────────
+
+/// Fire-and-forget: posts the saved [log] to the `challenge-notifier` Edge
+/// Function so active challenges are scored and ranked without blocking the UI.
+///
+/// [onComplete] — optional callback invoked after the edge function returns
+/// (whether it succeeded or not). Use it to invalidate provider caches, e.g.:
+///   `notifyChallenges(log, onComplete: () => ref.invalidate(myChallengesProvider))`
+///
+/// Silently swallows errors — a scoring failure must never surface to the user
+/// because the meal has already been saved successfully.
+void notifyChallenges(MealLog log, {void Function()? onComplete}) {
+  unawaited(_postChallengeEvent(log, onComplete: onComplete));
+}
+
+Future<void> _postChallengeEvent(
+  MealLog log, {
+  void Function()? onComplete,
+}) async {
+  try {
+    final client = Supabase.instance.client;
+    final userId = client.auth.currentSession?.user.id;
+    if (userId == null) return;
+
+    await client.functions.invoke(
+      'challenge-notifier',
+      body: {
+        'user_id': userId,
+        'meal_log_id': log.id,
+        'calories': log.totalCalories,
+        'protein_g': log.totalProtein,
+        'carbs_g': log.totalCarbs,
+        'fat_g': log.totalFat,
+        'logged_at': log.loggedAt.toIso8601String(),
+      },
+    );
+  } catch (_) {
+    // Non-fatal — challenge scores will self-correct on the next log.
+  } finally {
+    onComplete?.call();
+  }
+}
+
 // ── Direct log (barcode / manual quick-add) ─────────────────────────────────
 
 /// Saves a meal without the AI pipeline — used by barcode scan and quick-add.
@@ -266,6 +312,13 @@ Future<MealLog?> directLogMeal(
     ref.invalidate(historyLogsProvider(
       DateTime(today.year, today.month, today.day),
     ));
+
+    // Score any active challenges in the background — never awaited.
+    // On completion (success or failure), invalidate the challenges cache so
+    // the leaderboard reflects the new scores when the user navigates there.
+    notifyChallenges(log, onComplete: () {
+      ref.invalidate(myChallengesProvider);
+    });
 
     return log;
   } catch (_) {

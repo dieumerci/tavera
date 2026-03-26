@@ -8,6 +8,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/food_item.dart';
 import '../models/meal_log.dart';
+import 'challenge_controller.dart' show myChallengesProvider;
+import 'log_controller.dart' show notifyChallenges;
 
 // Top-level function required by compute() — runs in a background isolate.
 // Decodes bytes, resizes so the longest side ≤ 1024 px, re-encodes at 85% JPEG.
@@ -265,8 +267,15 @@ class MealController extends Notifier<MealState> {
             state.items.fold<double>(0.0, (s, i) => s + (i.fat ?? 0.0)),
       }).select().single();
 
+      final log = MealLog.fromMap(response);
+
+      // Score any active challenges in the background — never awaited.
+      notifyChallenges(log, onComplete: () {
+        ref.invalidate(myChallengesProvider);
+      });
+
       state = state.copyWith(step: MealProcessingStep.saved);
-      return MealLog.fromMap(response);
+      return log;
     } catch (e) {
       final msg = e.toString();
       final friendly = msg.contains('relation') || msg.contains('does not exist')
