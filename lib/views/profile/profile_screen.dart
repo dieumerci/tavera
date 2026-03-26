@@ -8,6 +8,8 @@ import '../../controllers/log_controller.dart';
 import '../../core/config/app_config.dart';
 import '../../services/haptic_service.dart';
 import '../../services/notification_service.dart';
+import '../../services/revenue_cat_service.dart';
+import '../../services/subscription_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../models/user_profile.dart';
@@ -106,6 +108,7 @@ class ProfileScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final profile = ref.watch(userProfileProvider).valueOrNull;
+    final isPremium = SubscriptionService.isPremium(ref);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -156,7 +159,7 @@ class ProfileScreen extends ConsumerWidget {
                     ],
                   ),
                 ),
-                if (profile?.isPremium == true)
+                if (isPremium)
                   Container(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 10, vertical: 4),
@@ -209,16 +212,20 @@ class ProfileScreen extends ConsumerWidget {
 
           // ── Subscription section ───────────────────────────────────
           _SectionLabel('Subscription'),
-          if (profile?.isPremium != true)
+          if (!isPremium)
             _UpgradeBanner(
-              onTap: () => showPaywallSheet(context),
+              onTap: () => showPaywallSheet(context, source: 'profile'),
             )
           else
             _Tile(
               icon: Icons.star_rounded,
               label: 'Premium active',
-              value: 'Manage',
-              onTap: () {},
+              value: 'Restore',
+              onTap: () async {
+                HapticService.selection();
+                await RevenueCatService.restore();
+                ref.invalidate(revenueCatPremiumProvider);
+              },
             ),
 
           const SizedBox(height: 24),
@@ -228,24 +235,24 @@ class ProfileScreen extends ConsumerWidget {
           _Tile(
             icon: Icons.insights_rounded,
             label: 'AI Coaching',
-            value: profile?.isPremium == true ? 'View' : 'Premium',
+            value: isPremium ? 'View' : 'Premium',
             onTap: () {
-              if (profile?.isPremium == true) {
+              if (isPremium) {
                 context.push('/coaching');
               } else {
-                showPaywallSheet(context);
+                showPaywallSheet(context, source: 'profile_coaching');
               }
             },
           ),
           _Tile(
             icon: Icons.restaurant_menu_rounded,
             label: 'Meal Planner',
-            value: profile?.isPremium == true ? 'View' : 'Premium',
+            value: isPremium ? 'View' : 'Premium',
             onTap: () {
-              if (profile?.isPremium == true) {
+              if (isPremium) {
                 context.push('/meal-planner');
               } else {
-                showPaywallSheet(context);
+                showPaywallSheet(context, source: 'profile_meal_planner');
               }
             },
           ),
