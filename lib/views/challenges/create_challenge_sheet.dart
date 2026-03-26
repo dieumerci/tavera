@@ -129,7 +129,7 @@ class _CreateChallengeSheetState
     } catch (e) {
       setState(() {
         _saving = false;
-        _error = 'Could not create challenge. Please try again.';
+        _error = 'Could not create challenge: ${e.toString()}';
       });
       HapticService.error();
     }

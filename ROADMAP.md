@@ -1,8 +1,8 @@
 # TAVERA — Product Roadmap & Development Checklist
 
-**Document Version:** 1.5
+**Document Version:** 1.6
 **Last Updated:** March 26, 2026
-**Status:** Phase 1 Complete · Phase 2 In Progress (code ~85% done — external setup remaining)
+**Status:** Phase 1 Complete · Phase 2 In Progress (code ~90% done — external setup remaining)
 **Author:** Dee (Founder)
 
 > **Legend:** ✅ Complete · 🔄 In Progress · ⏭ Deferred · ❌ Not started
@@ -293,7 +293,7 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 #### Social sharing & infographics
 - [ ] Build auto-generated completion infographic: challenge name, user stats, rank, best day, streak
 - [ ] Implement share-to-social flow (iOS Share Sheet / Android Share Intent)
-- [ ] Badge system: challenge badges shown on profile screen
+- ✅ Badge system: challenge badges shown on profile screen — `_ChallengeBadgesSection` with horizontal chip carousel using `completedChallengesProvider`
 - [ ] Implement achievement unlock notifications with celebratory animation
 
 #### Phase 2 Social Challenges scope
@@ -331,6 +331,25 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 - ✅ No live integration in Phase 2 — stub the interface and add a "Connect to delivery service" placeholder in the grocery list screen — `_DeliveryStubBanner`
 - [ ] Phase 3 will implement `InstacartDeliveryService` and `AmazonFreshDeliveryService` concretely
 
+### Competitive Parity — Quick Wins (from March 2026 Analysis)
+
+> **Source:** March 2026 competitive analysis vs. CalZen AI, BitePal, MyFitnessPal, MyNetDiary, Cal AI, Lose It!. Positioning: *"The insight app — other apps tell users what they ate; Tavera tells them what it means."*
+
+#### Intermittent Fasting Timer _(Priority 1 — Low effort, High impact)_
+- [ ] Add IF timer screen: customisable protocols (16:8, 18:6, 20:4, 5:2), visual countdown ring, start/stop/reset controls
+- [ ] Store active fast in Supabase `daily_stats` or a new `fasting_sessions` table
+- [ ] Show fasting window on Dashboard when a fast is active (replace or extend water card)
+- [ ] Fasting history tab: streak count, longest fast, success rate
+- [ ] Smart calorie gate: suppress meal logging prompts during fasting window; resume automatically when eating window opens
+- [ ] Gate behind premium (or free tier — evaluate at launch)
+
+#### Net Carbs Toggle _(Priority 4 — Low effort, Medium impact)_
+- [ ] Add `showNetCarbs` bool to `UserProfile` and persist to `profiles.net_carbs_mode`
+- [ ] Add toggle in Profile → Goals section
+- [ ] Wherever carbs are displayed (dashboard, history, review sheet), show `carbs - fiber` when mode is on
+- [ ] Update macro bars and coaching insights to use net carbs in this mode
+- [ ] Gate behind premium or keep free (keto audience acquisition play)
+
 ### Analytics
 
 - ✅ Integrate `posthog_flutter` (v4.6.0) with `AnalyticsService` abstraction layer — no-op when `POSTHOG_API_KEY` not set, silent error swallowing
@@ -354,21 +373,64 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 
 **Status: ❌ NOT STARTED**
 
-### Checklist
+> **Competitive positioning note (March 2026):** Phase 3 should deliver Tavera's three core differentiators vs. all major competitors: GLP-1 Mode (only MyNetDiary has any GLP-1 support), Mood-Energy Correlation Engine (no competitor has this), and Calorie Banking (flexible dieting vs. guilt-inducing daily targets). These are not just features — they are the "insight app" positioning made concrete.
+
+### Core Retention
 
 - [ ] Build the restaurant menu scanning feature
-- [ ] Integrate Apple HealthKit and Google Health Connect for activity data import (Note: step counting explicitly excluded; focus on calorie burn from workouts and heart rate)
+- [ ] Integrate Apple HealthKit and Google Health Connect for activity data import (step counting out of scope; focus on calorie burn from workouts)
 - [ ] Implement dynamic calorie budget adjustment based on imported activity data
 - [ ] Build the meal scoring system: green/yellow/red rating per meal based on goal alignment
 - [ ] Implement consistency streaks that reward logging frequency
 - [ ] Build the weekly summary screen with visual trends
-- [ ] Add intermittent fasting timer with eating window visualisation
 - [ ] Implement data export (CSV) for premium users
 - [ ] Add multi-language support starting with Spanish, Portuguese, French, and Hindi
 - [ ] Evaluate Google Cloud Vision + USDA database lookup to replace or supplement OpenAI Vision
 - [ ] Optimise app launch time to under 2 seconds on mid-range devices
 - [ ] Expand Social Challenges: custom challenge types, up to 50 participants, public challenge discovery
 - [ ] Implement `InstacartDeliveryService` and `AmazonFreshDeliveryService` grocery integrations
+
+### Food Label Scanner _(Priority 5 — Medium effort, Medium impact)_
+- [ ] Add "Scan nutrition label" option to `AddFoodSheet` alongside existing barcode scan
+- [ ] Capture photo of nutrition facts panel; send to Edge Function for OCR extraction
+- [ ] Parse all nutrients from label: calories, total fat, saturated fat, cholesterol, sodium, carbs, fiber, sugars, protein, vitamins
+- [ ] Pre-populate review sheet with extracted values; allow portion size adjustment
+- [ ] Particularly valuable for foods absent from barcode databases (restaurant branded items, imported products)
+
+### GLP-1 / Medication Tracking Mode _(Priority 2 — Medium effort, Very High impact)_
+
+> **Market opportunity:** GLP-1 market (Ozempic, Wegovy, Mounjaro, Zepbound) projected >$100B by 2030. Only MyNetDiary has any GLP-1 support — first-mover opportunity. These users are highly motivated, have specific nutritional needs, and pay for premium tools.
+
+- [ ] Add GLP-1 mode toggle to onboarding and Profile → Goals
+- [ ] When active: shift calorie goal down 20% (appetite suppression); raise protein target to 1.2g/kg to prevent muscle loss
+- [ ] Add medication log: name (dropdown of approved GLP-1 medications), dose, injection date/time, next dose reminder
+- [ ] Weekly protein sufficiency alert: if protein < 80% of target for 3+ consecutive days, trigger coaching insight
+- [ ] Plateau detection: if weight (optional input) hasn't changed in 3 weeks during rapid loss phase, surface coaching message
+- [ ] Nausea/side-effect log: optional after-meal feeling rating (1–5); feed into Mood-Energy engine
+- [ ] GLP-1 coach prompt variant in `generate-coaching` Edge Function: different advice for medication-assisted users
+- [ ] Gate behind premium
+
+### Mood-Energy-Food Correlation Engine _(Priority 3 — Medium effort, High impact)_
+
+> **Unique differentiator:** No competitor connects food intake to how users feel. This creates a data moat — the more users engage, the more personalised the insights become, and the data cannot be replicated.
+
+- [ ] Add optional after-meal rating prompt (dismissable): Energy (1–5), Mood (1–5), Digestive Comfort (1–5)
+- [ ] Store ratings in `meal_logs.feeling` jsonb column (migration required)
+- [ ] After 14 days of data: run correlation analysis in `generate-coaching` Edge Function — identify food patterns that correlate with low energy, poor mood, digestive discomfort
+- [ ] Surface insights: "High-carb lunches correlate with 30% lower afternoon energy for you", "Your protein-rich breakfasts are linked to better mood scores"
+- [ ] Build a "How you felt" chart on the weekly summary screen (Energy trend line overlaid on calorie bars)
+- [ ] Gate behind premium; the more data the user provides, the more accurate the insights
+
+### Calorie Banking System _(Priority 6 — Medium effort, Medium impact)_
+
+> **Psychological innovation:** Reframes calorie tracking from punishment to saving. Users who exceed daily targets feel guilty and abandon tracking. Banking treats unused calories as savings for special occasions.
+
+- [ ] Add weekly calorie budget view to dashboard (current week total vs. 7× daily goal)
+- [ ] Show "calorie bank balance": sum of daily deficits from Mon–today (saved calories)
+- [ ] Allow user to tag upcoming days as "planned indulgence" — bank balance can be pre-allocated
+- [ ] Smart warning when bank balance > 20% of weekly goal: gentle "make sure you're eating enough" message
+- [ ] Celebration when user ends the week within 5% of weekly budget (even if some days were over)
+- [ ] Gate behind premium
 
 ---
 
@@ -434,11 +496,16 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 
 > **Code is largely done. The remaining blockers are all external setup tasks.**
 
-1. **Apply migration 005** — run `supabase/migrations/005_rpc_and_constraints.sql` on the Tavera Supabase project (`hdtuezlbabsebkoucjhp`): adds `increment_known_meal_count` RPC, `grocery_lists` upsert constraint, fixes challenges RLS recursion. CLI: `supabase db push` or paste SQL into the Supabase dashboard SQL editor. _Note: MCP-connected Supabase account does not contain the Tavera project — apply manually._
+1. **Apply migrations 003 + 005** — Paste `003_phase2_tables.sql` then `005_rpc_and_constraints.sql` into the Supabase dashboard SQL editor for project `hdtuezlbabsebkoucjhp`. This creates the `challenges`, `challenge_participants`, `challenge_events`, `meal_plans`, and `grocery_lists` tables. **The challenge creation error will persist until 003 is applied.** _MCP-connected account does not contain the Tavera project — apply manually._
 2. **Deploy Edge Functions** — `supabase functions deploy --all` from `supabase/functions/` (6 functions: analyse-meal, generate-coaching, challenge-notifier, analyse-eating-patterns, generate-meal-plan, delete-account).
 3. **PostHog project setup** — create project at posthog.com, copy API key, add `--dart-define=POSTHOG_API_KEY=phc_...` to build/run configuration
 4. **RevenueCat setup** — create project at app.revenuecat.com, configure "premium" entitlement, create products in App Store Connect + Google Play Console, add `--dart-define=REVENUECAT_API_KEY_IOS=appl_...` and `REVENUECAT_API_KEY_ANDROID=goog_...` to build configuration, then set `_devPremiumOverride = false` in `subscription_service.dart`
 5. **Beta testing setup** — TestFlight + Google Play Internal Testing track
+
+### Phase 2 Quick Wins (next code sprint after external setup)
+- **Intermittent Fasting Timer** — no external dependencies, pure Flutter+Supabase. Highest competitive gap.
+- **Net Carbs Toggle** — 2-hour addition to profile + macro display. Keto user acquisition.
+- **Grocery list edit/add** — edit quantities, remove items, add custom items (partially wired in controller, UI complete)
 
 ---
 

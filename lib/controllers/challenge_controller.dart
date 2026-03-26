@@ -194,12 +194,15 @@ class MyChallengesNotifier extends AsyncNotifier<List<Challenge>> {
         .eq('id', userId)
         .maybeSingle();
 
-    await client.from('challenge_participants').upsert({
-      'challenge_id': challengeId,
-      'user_id': userId,
-      'display_name': profile?['name'] as String? ?? 'Anonymous',
-      'avatar_url': profile?['avatar_url'],
-    });
+    await client.from('challenge_participants').upsert(
+      {
+        'challenge_id': challengeId,
+        'user_id': userId,
+        'display_name': profile?['name'] as String? ?? 'Anonymous',
+        'avatar_url': profile?['avatar_url'],
+      },
+      onConflict: 'challenge_id,user_id',
+    );
 
     await client.from('challenge_events').insert({
       'challenge_id': challengeId,
@@ -301,6 +304,33 @@ class ChallengeDetailNotifier
     state = await AsyncValue.guard(() => _fetch(arg));
   }
 }
+
+// ── Completed challenges provider (for profile badges) ───────────────────────
+
+/// Loads the user's completed challenges (end_date passed) as lightweight
+/// records — just enough data for badge display. Fetched once on demand.
+final completedChallengesProvider = FutureProvider<List<Challenge>>((ref) async {
+  final authState = await ref.watch(authStateProvider.future);
+  if (authState.session == null) return [];
+
+  final client = Supabase.instance.client;
+  final userId = client.auth.currentUser?.id;
+  if (userId == null) return [];
+
+  final rows = await client
+      .from('challenge_participants')
+      .select('challenge_id, challenges(*)')
+      .eq('user_id', userId)
+      .order('joined_at', ascending: false);
+
+  return (rows as List<dynamic>)
+      .map((row) {
+        final map = row['challenges'] as Map<String, dynamic>? ?? {};
+        return Challenge.fromMap(map);
+      })
+      .where((c) => c.isCompleted)
+      .toList();
+});
 
 // ── Challenge.copyWithParticipants extension ─────────────────────────────────
 

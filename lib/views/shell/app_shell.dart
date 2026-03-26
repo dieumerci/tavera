@@ -62,22 +62,21 @@ class AppShell extends StatelessWidget {
       floatingActionButton: _CenterFab(onTap: () => _onAddTapped(context)),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
 
-      // BottomAppBar carves a notch for the FAB automatically.
-      bottomNavigationBar: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Subtle 1px separator between content and nav bar.
-          Container(height: 1, color: AppColors.border),
-          BottomAppBar(
-            color: AppColors.surface,
-            shape: const CircularNotchedRectangle(),
-            notchMargin: 8.0,
-            // Remove BottomAppBar's default internal padding so our Row
-            // controls all spacing.
-            padding: EdgeInsets.zero,
-            height: 60 + bottomPad,
-            child: Padding(
-              padding: EdgeInsets.only(bottom: bottomPad),
+      // BottomAppBar must be the direct bottomNavigationBar (not wrapped in
+      // a Column) so the Scaffold can read its notch geometry for the FAB.
+      bottomNavigationBar: BottomAppBar(
+        color: AppColors.surface,
+        shape: const CircularNotchedRectangle(),
+        notchMargin: 8.0,
+        elevation: 0,
+        padding: EdgeInsets.zero,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Subtle 1px separator between content and nav bar.
+            Container(height: 1, color: AppColors.border),
+            SizedBox(
+              height: 58,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
@@ -114,8 +113,10 @@ class AppShell extends StatelessWidget {
                 ],
               ),
             ),
-          ),
-        ],
+            // Bottom safe-area spacer (home indicator on iOS, gesture bar on Android).
+            SizedBox(height: bottomPad),
+          ],
+        ),
       ),
     );
   }
