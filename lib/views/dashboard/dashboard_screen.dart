@@ -887,6 +887,14 @@ class _KnownMealChip extends ConsumerWidget {
         await ref.read(knownMealControllerProvider.notifier).relog(meal, ref);
         ref.invalidate(logControllerProvider);
       },
+      onLongPress: () {
+        HapticService.medium();
+        showModalBottomSheet<void>(
+          context: context,
+          backgroundColor: Colors.transparent,
+          builder: (_) => _KnownMealActionSheet(meal: meal, ref: ref),
+        );
+      },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
@@ -917,6 +925,83 @@ class _KnownMealChip extends ConsumerWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ─── Known meal action sheet ──────────────────────────────────────────────────
+
+class _KnownMealActionSheet extends StatelessWidget {
+  final dynamic meal; // KnownMeal
+  final WidgetRef ref;
+  const _KnownMealActionSheet({required this.meal, required this.ref});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.fromLTRB(
+        24,
+        20,
+        24,
+        MediaQuery.of(context).padding.bottom + 24,
+      ),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Handle
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.border,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(meal.name as String, style: AppTextStyles.titleMedium),
+          Text(
+            '${meal.totalCalories} kcal · logged ${meal.occurrenceCount}×',
+            style: AppTextStyles.caption
+                .copyWith(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 20),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.delete_outline_rounded,
+                color: AppColors.danger),
+            title: Text(
+              'Remove from quick log',
+              style:
+                  AppTextStyles.bodyLarge.copyWith(color: AppColors.danger),
+            ),
+            onTap: () async {
+              HapticService.medium();
+              Navigator.of(context).pop();
+              await ref
+                  .read(knownMealControllerProvider.notifier)
+                  .delete(meal.id as String);
+            },
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.close_rounded,
+                color: AppColors.textSecondary),
+            title:
+                Text('Cancel', style: AppTextStyles.bodyLarge),
+            onTap: () {
+              HapticService.selection();
+              Navigator.of(context).pop();
+            },
+          ),
+        ],
       ),
     );
   }

@@ -19,6 +19,7 @@ import '../../widgets/sheet_handle.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../widgets/tavera_loading.dart';
+import '../../services/analytics_service.dart';
 import '../../services/notification_service.dart';
 import '../paywall/paywall_sheet.dart';
 import '../quick_add/quick_add_sheet.dart';
@@ -53,6 +54,7 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
     WidgetsBinding.instance.addObserver(this);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
+    AnalyticsService.track('camera_opened');
 
     _flashCtrl = AnimationController(
       vsync: this,

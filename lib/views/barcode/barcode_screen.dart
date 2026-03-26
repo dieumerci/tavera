@@ -9,6 +9,7 @@ import '../../controllers/log_controller.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../models/food_item.dart';
+import '../../services/analytics_service.dart';
 import '../../services/haptic_service.dart';
 import '../../widgets/sheet_handle.dart';
 
@@ -55,6 +56,7 @@ class _BarcodeScanScreenState extends State<BarcodeScanScreen> {
 
     _handled = true;
     HapticService.medium();
+    AnalyticsService.track('barcode_scanned');
     await _scanner.stop();
     if (!mounted) return;
     setState(() => _ui = _ScreenState.loading);

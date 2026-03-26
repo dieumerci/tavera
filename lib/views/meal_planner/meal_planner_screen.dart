@@ -9,6 +9,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../models/grocery_list.dart';
 import '../../models/meal_plan.dart';
+import '../../services/analytics_service.dart';
 import '../../services/haptic_service.dart';
 import '../../services/subscription_service.dart';
 import '../../widgets/tavera_loading.dart';
@@ -37,6 +38,11 @@ class _MealPlannerScreenState extends ConsumerState<MealPlannerScreen>
   void initState() {
     super.initState();
     _tabCtrl = TabController(length: 2, vsync: this);
+    _tabCtrl.addListener(() {
+      if (_tabCtrl.index == 1 && !_tabCtrl.indexIsChanging) {
+        AnalyticsService.track('grocery_list_opened');
+      }
+    });
 
     // Auto-generate if premium and no plan exists for this week.
     WidgetsBinding.instance.addPostFrameCallback((_) {
