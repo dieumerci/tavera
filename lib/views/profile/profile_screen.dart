@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../controllers/auth_controller.dart';
+import '../../controllers/challenge_controller.dart';
 import '../../controllers/log_controller.dart';
 import '../../core/config/app_config.dart';
 import '../../services/haptic_service.dart';
@@ -12,6 +13,7 @@ import '../../services/revenue_cat_service.dart';
 import '../../services/subscription_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
+import '../../models/challenge.dart';
 import '../../models/user_profile.dart';
 import '../../widgets/labeled_text_field.dart';
 import '../../widgets/sheet_handle.dart';
@@ -263,6 +265,11 @@ class ProfileScreen extends ConsumerWidget {
             onTap: () => context.push('/challenges'),
           ),
 
+          const SizedBox(height: 24),
+
+          // ── Challenge badges ───────────────────────────────────────
+          _ChallengeBadgesSection(),
+
           const SizedBox(height: 32),
 
           // ── Danger zone ────────────────────────────────────────────
@@ -338,6 +345,74 @@ class ProfileScreen extends ConsumerWidget {
                 ],
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Challenge badge section ─────────────────────────────────────────────────
+
+class _ChallengeBadgesSection extends ConsumerWidget {
+  const _ChallengeBadgesSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(completedChallengesProvider);
+    return async.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (completed) {
+        if (completed.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _SectionLabel('Achievements'),
+            SizedBox(
+              height: 84,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: completed.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 10),
+                itemBuilder: (context, i) => _BadgeChip(completed[i]),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _BadgeChip extends StatelessWidget {
+  final Challenge challenge;
+  const _BadgeChip(this.challenge);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 110,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.accent.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(challenge.type.icon, style: const TextStyle(fontSize: 22)),
+          const SizedBox(height: 6),
+          Text(
+            challenge.title,
+            style: AppTextStyles.caption.copyWith(
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
           ),
         ],
       ),
