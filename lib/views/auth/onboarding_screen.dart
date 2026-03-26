@@ -6,6 +6,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../controllers/auth_controller.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
+import '../../models/user_profile.dart';
+import '../../services/analytics_service.dart';
 import '../../services/haptic_service.dart';
 
 class OnboardingScreen extends ConsumerStatefulWidget {
@@ -16,10 +18,10 @@ class OnboardingScreen extends ConsumerStatefulWidget {
 }
 
 // Three logical views within the same route:
-//   auth  → sign-up / sign-in form
-//   goal  → calorie goal picker (shown after successful sign-up)
-//   (navigation to / is handled by context.go + router redirect)
-enum _OnboardingStep { auth, goal }
+//   auth      → sign-up / sign-in form
+//   bodyStats → weight, height, age, sex (new users only, skippable)
+//   goal      → calorie goal picker with BMR suggestion
+enum _OnboardingStep { auth, bodyStats, goal }
 
 class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   final _emailCtrl    = TextEditingController();
@@ -29,11 +31,18 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   bool _isSignUp = true;
   bool _isLoading = false;
 
-  // Calorie goal step
+  // Step tracking
   _OnboardingStep _step = _OnboardingStep.auth;
+
+  // Body stats (step 2)
+  Sex? _sex;
+  int _age     = 25;
+  double _weightKg = 70;
+  int _heightCm    = 170;
+
+  // Calorie goal (step 3) — pre-populated from BMR when body stats are entered
   int _calorieGoal = 2000;
 
-  // Preset goal buckets shown as tappable chips.
   static const _goalPresets = [1500, 1800, 2000, 2500, 3000];
 
   @override
@@ -44,14 +53,13 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     super.dispose();
   }
 
-  // ── Auth submission ──────────────────────────────────────────────────────────
+  // ── Auth submission ───────────────────────────────────────────────────────
 
   Future<void> _submitAuth() async {
     final email    = _emailCtrl.text.trim();
     final password = _passwordCtrl.text.trim();
     final name     = _nameCtrl.text.trim();
 
-    // Client-side validation
     if (_isSignUp && name.isEmpty) {
       await HapticService.error();
       _showErrorDialog('Please enter your name.');
@@ -80,17 +88,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       if (_isSignUp) {
         final pendingEmail = await ref
             .read(authControllerProvider.notifier)
-            .signUpWithEmail(
-              email,
-              password,
-              name,
-              calorieGoal: _calorieGoal,
-            );
+            .signUpWithEmail(email, password, name, calorieGoal: _calorieGoal);
 
         if (!mounted) return;
 
         if (pendingEmail != null) {
-          // Email confirmation required
           setState(() => _isLoading = false);
           _showInfoDialog(
             'Check your inbox',
@@ -101,20 +103,17 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           return;
         }
 
-        // Sign-up succeeded and session is live — show goal picker
+        // Sign-up succeeded — go to body stats step
         setState(() {
           _isLoading = false;
-          _step = _OnboardingStep.goal;
+          _step = _OnboardingStep.bodyStats;
         });
       } else {
-        await ref.read(authControllerProvider.notifier).signInWithEmail(
-              email,
-              password,
-            );
+        await ref
+            .read(authControllerProvider.notifier)
+            .signInWithEmail(email, password);
         if (!mounted) return;
         await HapticService.success();
-        // Navigate to dashboard (/) — GoRouter redirect is a safety net,
-        // but we drive explicitly to avoid the async stream gap.
         if (!mounted) return;
         context.go('/');
       }
@@ -127,7 +126,53 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     }
   }
 
-  // ── Goal submission ──────────────────────────────────────────────────────────
+  // ── Body stats submission ─────────────────────────────────────────────────
+
+  Future<void> _submitBodyStats() async {
+    await HapticService.medium();
+    setState(() => _isLoading = true);
+
+    try {
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session != null) {
+        await Supabase.instance.client
+            .from('profiles')
+            .update({
+              'weight_kg':  _weightKg,
+              'height_cm':  _heightCm,
+              'age':        _age,
+              'sex':        _sex?.name,
+            })
+            .eq('id', session.user.id);
+      }
+    } catch (_) {
+      // Non-fatal — goal step will still work with manual entry.
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+
+    // Pre-populate goal from BMR if we have enough data.
+    if (_sex != null) {
+      final tmpProfile = UserProfile(
+        id: '',
+        weightKg: _weightKg,
+        heightCm: _heightCm,
+        age: _age,
+        sex: _sex,
+      );
+      final suggested = tmpProfile.suggestedCalorieGoal;
+      if (suggested != null) setState(() => _calorieGoal = suggested);
+    }
+
+    setState(() => _step = _OnboardingStep.goal);
+  }
+
+  void _skipBodyStats() {
+    HapticService.selection();
+    setState(() => _step = _OnboardingStep.goal);
+  }
+
+  // ── Goal submission ───────────────────────────────────────────────────────
 
   Future<void> _submitGoal() async {
     await HapticService.heavy();
@@ -137,11 +182,18 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       if (session != null) {
         await Supabase.instance.client
             .from('profiles')
-            .update({'calorie_goal': _calorieGoal})
+            .update({
+              'calorie_goal':         _calorieGoal,
+              'onboarding_completed': true,
+            })
             .eq('id', session.user.id);
       }
+      AnalyticsService.track('onboarding_completed', properties: {
+        'calorie_goal': _calorieGoal,
+        'has_body_stats': _sex != null,
+      });
     } catch (_) {
-      // Non-fatal — the default 2000 kcal written at sign-up is still valid.
+      // Non-fatal — sensible defaults are already in the DB.
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -150,7 +202,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     if (mounted) context.go('/');
   }
 
-  // ── Error / info dialogs ─────────────────────────────────────────────────────
+  // ── Dialogs ───────────────────────────────────────────────────────────────
 
   void _showErrorDialog(String message) {
     showDialog<void>(
@@ -159,31 +211,33 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         backgroundColor: AppColors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text('Oops', style: AppTextStyles.titleMedium),
-        content: Text(message, style: AppTextStyles.bodyMedium.copyWith(height: 1.5)),
+        content: Text(message,
+            style: AppTextStyles.bodyMedium.copyWith(height: 1.5)),
         actions: [
           TextButton(
             onPressed: () {
               HapticService.selection();
               Navigator.of(ctx).pop();
             },
-            child: Text(
-              'OK',
-              style: AppTextStyles.labelLarge.copyWith(color: AppColors.accent),
-            ),
+            child: Text('OK',
+                style:
+                    AppTextStyles.labelLarge.copyWith(color: AppColors.accent)),
           ),
         ],
       ),
     );
   }
 
-  void _showInfoDialog(String title, String message, {VoidCallback? onDismiss}) {
+  void _showInfoDialog(String title, String message,
+      {VoidCallback? onDismiss}) {
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(title, style: AppTextStyles.titleMedium),
-        content: Text(message, style: AppTextStyles.bodyMedium.copyWith(height: 1.5)),
+        content: Text(message,
+            style: AppTextStyles.bodyMedium.copyWith(height: 1.5)),
         actions: [
           TextButton(
             onPressed: () {
@@ -191,23 +245,23 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               Navigator.of(ctx).pop();
               onDismiss?.call();
             },
-            child: Text(
-              'Got it',
-              style: AppTextStyles.labelLarge.copyWith(color: AppColors.accent),
-            ),
+            child: Text('Got it',
+                style:
+                    AppTextStyles.labelLarge.copyWith(color: AppColors.accent)),
           ),
         ],
       ),
     );
   }
 
-  // ── Helpers ──────────────────────────────────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────────────────────
 
   String _friendlyError(String raw) {
     if (raw.contains('Invalid login') || raw.contains('invalid_credentials')) {
       return 'Wrong email or password. Please try again.';
     }
-    if (raw.contains('already registered') || raw.contains('already been registered')) {
+    if (raw.contains('already registered') ||
+        raw.contains('already been registered')) {
       return 'An account with this email already exists. Sign in instead.';
     }
     if (raw.contains('Password should') || raw.contains('password')) {
@@ -222,7 +276,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     return 'Something went wrong. Please try again.';
   }
 
-  // ── Build ────────────────────────────────────────────────────────────────────
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -230,37 +284,95 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       backgroundColor: AppColors.background,
       resizeToAvoidBottomInset: true,
       body: SafeArea(
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 300),
-          switchInCurve: Curves.easeOut,
-          child: _step == _OnboardingStep.auth
-              ? _AuthView(
-                  key: const ValueKey('auth'),
-                  emailCtrl: _emailCtrl,
-                  passwordCtrl: _passwordCtrl,
-                  nameCtrl: _nameCtrl,
-                  isSignUp: _isSignUp,
-                  isLoading: _isLoading,
-                  onToggle: () async {
-                    await HapticService.selection();
-                    setState(() {
-                      _isSignUp = !_isSignUp;
-                    });
-                  },
-                  onSubmit: _submitAuth,
-                )
-              : _GoalView(
-                  key: const ValueKey('goal'),
-                  selected: _calorieGoal,
-                  presets: _goalPresets,
-                  isLoading: _isLoading,
-                  onSelected: (v) async {
-                    await HapticService.selection();
-                    setState(() => _calorieGoal = v);
-                  },
-                  onSubmit: _submitGoal,
-                ),
+        child: Column(
+          children: [
+            // Step progress dots (only after auth)
+            if (_step != _OnboardingStep.auth)
+              _StepDots(
+                current: _step == _OnboardingStep.bodyStats ? 0 : 1,
+                total: 2,
+              ),
+
+            Expanded(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                switchInCurve: Curves.easeOut,
+                child: switch (_step) {
+                  _OnboardingStep.auth => _AuthView(
+                      key: const ValueKey('auth'),
+                      emailCtrl: _emailCtrl,
+                      passwordCtrl: _passwordCtrl,
+                      nameCtrl: _nameCtrl,
+                      isSignUp: _isSignUp,
+                      isLoading: _isLoading,
+                      onToggle: () async {
+                        await HapticService.selection();
+                        setState(() => _isSignUp = !_isSignUp);
+                      },
+                      onSubmit: _submitAuth,
+                    ),
+                  _OnboardingStep.bodyStats => _BodyStatsView(
+                      key: const ValueKey('bodyStats'),
+                      sex: _sex,
+                      age: _age,
+                      weightKg: _weightKg,
+                      heightCm: _heightCm,
+                      isLoading: _isLoading,
+                      onSexChanged: (v) => setState(() => _sex = v),
+                      onAgeChanged: (v) => setState(() => _age = v),
+                      onWeightChanged: (v) => setState(() => _weightKg = v),
+                      onHeightChanged: (v) => setState(() => _heightCm = v),
+                      onSubmit: _submitBodyStats,
+                      onSkip: _skipBodyStats,
+                    ),
+                  _OnboardingStep.goal => _GoalView(
+                      key: const ValueKey('goal'),
+                      selected: _calorieGoal,
+                      presets: _goalPresets,
+                      isLoading: _isLoading,
+                      hasBmrSuggestion: _sex != null,
+                      onSelected: (v) async {
+                        await HapticService.selection();
+                        setState(() => _calorieGoal = v);
+                      },
+                      onSubmit: _submitGoal,
+                    ),
+                },
+              ),
+            ),
+          ],
         ),
+      ),
+    );
+  }
+}
+
+// ─── Step progress dots ───────────────────────────────────────────────────────
+
+class _StepDots extends StatelessWidget {
+  final int current; // 0-based
+  final int total;
+  const _StepDots({required this.current, required this.total});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 16, bottom: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: List.generate(total, (i) {
+          final isActive = i == current;
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 250),
+            margin: const EdgeInsets.symmetric(horizontal: 4),
+            width: isActive ? 20 : 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: isActive ? AppColors.accent : AppColors.border,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          );
+        }),
       ),
     );
   }
@@ -297,7 +409,6 @@ class _AuthView extends StatelessWidget {
         children: [
           const SizedBox(height: 64),
 
-          // Brand
           Text(
             'tavera.',
             style: AppTextStyles.displayLarge.copyWith(color: AppColors.accent),
@@ -316,7 +427,6 @@ class _AuthView extends StatelessWidget {
 
           const SizedBox(height: 48),
 
-          // Sign-up / Sign-in toggle
           Row(
             children: [
               _TabButton(
@@ -368,7 +478,6 @@ class _AuthView extends StatelessWidget {
 
           const SizedBox(height: 28),
 
-          // Primary CTA
           _PrimaryButton(
             label: isSignUp ? 'Get started' : 'Sign in',
             isLoading: isLoading,
@@ -377,13 +486,13 @@ class _AuthView extends StatelessWidget {
 
           const SizedBox(height: 20),
 
-          // Toggle link at bottom
           Center(
             child: GestureDetector(
               onTap: onToggle,
               behavior: HitTestBehavior.opaque,
               child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                padding:
+                    const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
                 child: RichText(
                   text: TextSpan(
                     children: [
@@ -414,12 +523,246 @@ class _AuthView extends StatelessWidget {
   }
 }
 
+// ─── Body stats view ──────────────────────────────────────────────────────────
+
+class _BodyStatsView extends StatelessWidget {
+  final Sex? sex;
+  final int age;
+  final double weightKg;
+  final int heightCm;
+  final bool isLoading;
+  final ValueChanged<Sex?> onSexChanged;
+  final ValueChanged<int> onAgeChanged;
+  final ValueChanged<double> onWeightChanged;
+  final ValueChanged<int> onHeightChanged;
+  final VoidCallback onSubmit;
+  final VoidCallback onSkip;
+
+  const _BodyStatsView({
+    super.key,
+    required this.sex,
+    required this.age,
+    required this.weightKg,
+    required this.heightCm,
+    required this.isLoading,
+    required this.onSexChanged,
+    required this.onAgeChanged,
+    required this.onWeightChanged,
+    required this.onHeightChanged,
+    required this.onSubmit,
+    required this.onSkip,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 28),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 40),
+
+          Text(
+            'About you',
+            style: AppTextStyles.displayLarge.copyWith(color: AppColors.accent),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'We use this to calculate\nyour personalised calorie goal.',
+            style: AppTextStyles.titleLarge.copyWith(
+              color: AppColors.textSecondary,
+              fontWeight: FontWeight.w400,
+              height: 1.4,
+            ),
+          ),
+
+          const SizedBox(height: 36),
+
+          // ── Sex ──────────────────────────────────────────────────────────
+          Text('Biological sex', style: AppTextStyles.caption),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _SexChip(
+                label: 'Male',
+                isSelected: sex == Sex.male,
+                onTap: () => onSexChanged(Sex.male),
+              ),
+              const SizedBox(width: 10),
+              _SexChip(
+                label: 'Female',
+                isSelected: sex == Sex.female,
+                onTap: () => onSexChanged(Sex.female),
+              ),
+              const SizedBox(width: 10),
+              _SexChip(
+                label: 'Other',
+                isSelected: sex == Sex.other,
+                onTap: () => onSexChanged(Sex.other),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 28),
+
+          // ── Age ───────────────────────────────────────────────────────────
+          _SliderRow(
+            label: 'Age',
+            value: '$age years',
+            child: Slider(
+              value: age.toDouble(),
+              min: 15,
+              max: 80,
+              divisions: 65,
+              onChanged: (v) => onAgeChanged(v.round()),
+            ),
+          ),
+
+          const SizedBox(height: 20),
+
+          // ── Weight ────────────────────────────────────────────────────────
+          _SliderRow(
+            label: 'Weight',
+            value: '${weightKg.toStringAsFixed(1)} kg',
+            child: Slider(
+              value: weightKg,
+              min: 40,
+              max: 200,
+              divisions: 320,
+              onChanged: onWeightChanged,
+            ),
+          ),
+
+          const SizedBox(height: 20),
+
+          // ── Height ────────────────────────────────────────────────────────
+          _SliderRow(
+            label: 'Height',
+            value: '$heightCm cm',
+            child: Slider(
+              value: heightCm.toDouble(),
+              min: 140,
+              max: 220,
+              divisions: 80,
+              onChanged: (v) => onHeightChanged(v.round()),
+            ),
+          ),
+
+          const SizedBox(height: 36),
+
+          _PrimaryButton(
+            label: 'Continue',
+            isLoading: isLoading,
+            onTap: onSubmit,
+          ),
+
+          const SizedBox(height: 14),
+
+          Center(
+            child: TextButton(
+              onPressed: onSkip,
+              child: Text(
+                'Skip for now',
+                style: AppTextStyles.bodyMedium.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 32),
+        ],
+      ),
+    );
+  }
+}
+
+class _SexChip extends StatelessWidget {
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+  const _SexChip(
+      {required this.label, required this.isSelected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          HapticService.selection();
+          onTap();
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: isSelected ? AppColors.accent : AppColors.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSelected ? AppColors.accent : AppColors.border,
+            ),
+          ),
+          child: Text(
+            label,
+            style: AppTextStyles.labelLarge.copyWith(
+              color:
+                  isSelected ? AppColors.background : AppColors.textSecondary,
+              fontSize: 14,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SliderRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final Widget child;
+  const _SliderRow(
+      {required this.label, required this.value, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style: AppTextStyles.caption),
+            Text(
+              value,
+              style: AppTextStyles.labelLarge
+                  .copyWith(color: AppColors.accent, fontSize: 14),
+            ),
+          ],
+        ),
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            trackHeight: 3,
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+            activeTrackColor: AppColors.accent,
+            inactiveTrackColor: AppColors.border,
+            thumbColor: AppColors.accent,
+            overlayColor: AppColors.accent.withValues(alpha: 0.15),
+          ),
+          child: child,
+        ),
+      ],
+    );
+  }
+}
+
 // ─── Calorie goal view ────────────────────────────────────────────────────────
 
 class _GoalView extends StatelessWidget {
   final int selected;
   final List<int> presets;
   final bool isLoading;
+  final bool hasBmrSuggestion;
   final ValueChanged<int> onSelected;
   final VoidCallback onSubmit;
 
@@ -428,26 +771,29 @@ class _GoalView extends StatelessWidget {
     required this.selected,
     required this.presets,
     required this.isLoading,
+    required this.hasBmrSuggestion,
     required this.onSelected,
     required this.onSubmit,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 28),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 64),
+          const SizedBox(height: 40),
 
           Text(
-            'Set your goal',
+            'Your goal',
             style: AppTextStyles.displayLarge.copyWith(color: AppColors.accent),
           ),
           const SizedBox(height: 10),
           Text(
-            'How many calories do you\naim to eat per day?',
+            hasBmrSuggestion
+                ? 'We calculated a goal based on\nyour stats. Adjust if needed.'
+                : 'How many calories do you\naim to eat per day?',
             style: AppTextStyles.titleLarge.copyWith(
               color: AppColors.textSecondary,
               fontWeight: FontWeight.w400,
@@ -455,7 +801,7 @@ class _GoalView extends StatelessWidget {
             ),
           ),
 
-          const SizedBox(height: 48),
+          const SizedBox(height: 36),
 
           // Preset chips
           Wrap(
@@ -473,7 +819,8 @@ class _GoalView extends StatelessWidget {
                     color: isSelected ? AppColors.accent : AppColors.surface,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                      color: isSelected ? AppColors.accent : AppColors.border,
+                      color:
+                          isSelected ? AppColors.accent : AppColors.border,
                     ),
                   ),
                   child: Text(
@@ -489,7 +836,7 @@ class _GoalView extends StatelessWidget {
             }).toList(),
           ),
 
-          const SizedBox(height: 32),
+          const SizedBox(height: 28),
 
           // Fine-tune slider
           Column(
@@ -498,12 +845,34 @@ class _GoalView extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Fine-tune', style: AppTextStyles.caption),
+                  Row(
+                    children: [
+                      Text('Fine-tune', style: AppTextStyles.caption),
+                      if (hasBmrSuggestion) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppColors.accentMuted,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            'BMR',
+                            style: AppTextStyles.caption.copyWith(
+                              color: AppColors.accent,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                   Text(
                     '$selected kcal / day',
-                    style: AppTextStyles.labelLarge.copyWith(
-                      color: AppColors.accent,
-                    ),
+                    style: AppTextStyles.labelLarge
+                        .copyWith(color: AppColors.accent),
                   ),
                 ],
               ),
@@ -536,7 +905,7 @@ class _GoalView extends StatelessWidget {
             ],
           ),
 
-          const Spacer(),
+          const SizedBox(height: 36),
 
           _PrimaryButton(
             label: 'Start tracking',
@@ -602,7 +971,6 @@ class _TabButton extends StatelessWidget {
   }
 }
 
-// Stateful so we can own a FocusNode and fire haptics on focus.
 class _InputField extends StatefulWidget {
   final TextEditingController controller;
   final String hint;
@@ -626,7 +994,7 @@ class _InputField extends StatefulWidget {
 
 class _InputFieldState extends State<_InputField> {
   final _focusNode = FocusNode();
-  bool _isFocused = false;
+  bool _isFocused  = false;
   bool _showPassword = false;
 
   @override
@@ -699,8 +1067,6 @@ class _InputFieldState extends State<_InputField> {
   }
 }
 
-// ─── Primary Button ───────────────────────────────────────────────────────────
-
 class _PrimaryButton extends StatelessWidget {
   final String label;
   final bool isLoading;
@@ -718,10 +1084,12 @@ class _PrimaryButton extends StatelessWidget {
       width: double.infinity,
       height: 52,
       child: ElevatedButton(
-        onPressed: isLoading ? null : () {
-          HapticService.heavy();
-          onTap();
-        },
+        onPressed: isLoading
+            ? null
+            : () {
+                HapticService.heavy();
+                onTap();
+              },
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.accent,
           foregroundColor: AppColors.background,
