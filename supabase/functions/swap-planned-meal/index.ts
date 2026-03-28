@@ -109,8 +109,8 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── 3. Build prompt ──────────────────────────────────────────────────────
-    const openaiKey = Deno.env.get("OPENAI_API_KEY");
-    if (!openaiKey) throw new Error("OPENAI_API_KEY not set");
+    const geminiKey = Deno.env.get("GEMINI_API_KEY");
+    if (!geminiKey) throw new Error("GEMINI_API_KEY not set");
 
     const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
@@ -123,31 +123,17 @@ Current meal to replace: ${current_meal_name || "unknown"}
 Already in the plan this week (do not repeat): ${existingMealNames.slice(0, 30).join(", ") || "none"}
 `.trim();
 
-    // ── 4. Call GPT-4o ───────────────────────────────────────────────────────
-    const gptResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiKey}` },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        max_tokens: 800,
-        temperature: 0.8,
-        messages: [
-          { role: "system", content: SWAP_PROMPT },
-          { role: "user", content: userContext },
-        ],
-      }),
-    });
-
-    if (!gptResponse.ok) {
-      throw new Error(`OpenAI error ${gptResponse.status}: ${await gptResponse.text()}`);
-    }
-
-    const gptJson = await gptResponse.json();
-    const rawContent = gptJson.choices[0].message.content.trim();
-    const alternatives = JSON.parse(rawContent);
+    // ── 4. Call Gemini ───────────────────────────────────────────────────────
+    const rawContent = await _callGemini(
+      geminiKey,
+      "gemini-1.5-flash",
+      SWAP_PROMPT + "\n\n" + userContext,
+      { temperature: 0.8, maxOutputTokens: 800 }
+    );
+    const alternatives = JSON.parse(_cleanJson(rawContent));
 
     if (!Array.isArray(alternatives) || alternatives.length === 0) {
-      throw new Error("GPT returned no alternatives");
+      throw new Error("Gemini returned no alternatives");
     }
 
     return new Response(
@@ -163,3 +149,39 @@ Already in the plan this week (do not repeat): ${existingMealNames.slice(0, 30).
     );
   }
 });
+
+// ─── Gemini helpers ───────────────────────────────────────────────────────────
+
+async function _callGemini(
+  apiKey: string,
+  model: string,
+  prompt: string,
+  config: { temperature: number; maxOutputTokens: number }
+): Promise<string> {
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: config,
+      }),
+    }
+  );
+  if (!res.ok) {
+    throw new Error(`Gemini API error (${res.status}): ${await res.text()}`);
+  }
+  const json = await res.json();
+  const text: string = json.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+  if (!text) throw new Error("Empty response from Gemini");
+  return text;
+}
+
+function _cleanJson(text: string): string {
+  return text
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+}

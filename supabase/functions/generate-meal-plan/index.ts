@@ -158,19 +158,19 @@ Deno.serve(async (req: Request) => {
       .map(([name]) => name);
 
     const calorieTarget = profile?.calorie_goal ?? 2000;
-    const openaiKey = Deno.env.get("OPENAI_API_KEY");
-    if (!openaiKey) throw new Error("OPENAI_API_KEY not set");
+    const geminiKey = Deno.env.get("GEMINI_API_KEY");
+    if (!geminiKey) throw new Error("GEMINI_API_KEY not set");
 
     // ── Branch: single-day regeneration ─────────────────────────────────────
     if (day_index !== undefined) {
       return await _regenerateDay({
         supabase, user_id, week_start, day_index,
-        calorieTarget, topFoods, profile, openaiKey,
+        calorieTarget, topFoods, profile, geminiKey,
         corsHeaders,
       });
     }
 
-    // ── 3. Build GPT prompt (full week) ──────────────────────────────────────
+    // ── 3. Build prompt (full week) ──────────────────────────────────────────
     const userContext = `
 User: ${profile?.name ?? "there"}
 Calorie target: ${calorieTarget} kcal/day
@@ -179,28 +179,14 @@ Frequently eaten foods (incorporate where suitable): ${topFoods.join(", ") || "n
 Week of: ${week_start}
 `.trim();
 
-    // ── 4. Call GPT-4o ───────────────────────────────────────────────────────
-    const gptResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiKey}` },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        max_tokens: 3000,
-        temperature: 0.5,
-        messages: [
-          { role: "system", content: MEAL_PLAN_PROMPT + "\n\n" + GROCERY_PROMPT },
-          { role: "user", content: userContext },
-        ],
-      }),
-    });
-
-    if (!gptResponse.ok) {
-      throw new Error(`OpenAI error ${gptResponse.status}: ${await gptResponse.text()}`);
-    }
-
-    const gptJson = await gptResponse.json();
-    const rawContent = gptJson.choices[0].message.content.trim();
-    const planData = JSON.parse(rawContent);
+    // ── 4. Call Gemini ───────────────────────────────────────────────────────
+    const rawContent = await _callGemini(
+      geminiKey,
+      "gemini-1.5-flash",
+      MEAL_PLAN_PROMPT + "\n\n" + GROCERY_PROMPT + "\n\n" + userContext,
+      { temperature: 0.5, maxOutputTokens: 3000 }
+    );
+    const planData = JSON.parse(_cleanJson(rawContent));
 
     // ── 5. Upsert meal_plan ───────────────────────────────────────────────────
     const { data: mealPlan, error: planErr } = await supabase
@@ -273,12 +259,12 @@ async function _regenerateDay(opts: {
   calorieTarget: number;
   topFoods: string[];
   profile: Record<string, unknown> | null;
-  openaiKey: string;
+  geminiKey: string;
   corsHeaders: Record<string, string>;
 }): Promise<Response> {
   const {
     supabase, user_id, week_start, day_index,
-    calorieTarget, topFoods, profile, openaiKey, corsHeaders,
+    calorieTarget, topFoods, profile, geminiKey, corsHeaders,
   } = opts;
 
   const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -310,27 +296,13 @@ Frequently eaten foods (incorporate where suitable): ${topFoods.join(", ") || "n
 Already used in other days of the week (do not repeat): ${otherMealNames.slice(0, 20).join(", ") || "none"}
 `.trim();
 
-  const gptResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiKey}` },
-    body: JSON.stringify({
-      model: "gpt-4o",
-      max_tokens: 800,
-      temperature: 0.7,
-      messages: [
-        { role: "system", content: SINGLE_DAY_PROMPT },
-        { role: "user", content: userContext },
-      ],
-    }),
-  });
-
-  if (!gptResponse.ok) {
-    throw new Error(`OpenAI error ${gptResponse.status}: ${await gptResponse.text()}`);
-  }
-
-  const gptJson = await gptResponse.json();
-  const rawContent = gptJson.choices[0].message.content.trim();
-  const newDay = JSON.parse(rawContent);
+  const rawContent = await _callGemini(
+    geminiKey,
+    "gemini-1.5-flash",
+    SINGLE_DAY_PROMPT + "\n\n" + userContext,
+    { temperature: 0.7, maxOutputTokens: 800 }
+  );
+  const newDay = JSON.parse(_cleanJson(rawContent));
 
   // Merge the new day into the existing days array.
   const mergedDays = existingDays.filter((d) => d.day_index !== day_index);
@@ -357,4 +329,40 @@ Already used in other days of the week (do not repeat): ${otherMealNames.slice(0
     JSON.stringify({ meal_plan: updatedPlan, grocery_list: groceryList ?? null }),
     { headers: { ...corsHeaders, "Content-Type": "application/json" } }
   );
+}
+
+// ─── Gemini helpers (text-only) ───────────────────────────────────────────────
+
+async function _callGemini(
+  apiKey: string,
+  model: string,
+  prompt: string,
+  config: { temperature: number; maxOutputTokens: number }
+): Promise<string> {
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: config,
+      }),
+    }
+  );
+  if (!res.ok) {
+    throw new Error(`Gemini API error (${res.status}): ${await res.text()}`);
+  }
+  const json = await res.json();
+  const text: string = json.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+  if (!text) throw new Error("Empty response from Gemini");
+  return text;
+}
+
+function _cleanJson(text: string): string {
+  return text
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
 }

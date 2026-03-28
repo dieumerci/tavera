@@ -141,37 +141,22 @@ Daily breakdown:
 ${summaryText || "(no logs this week)"}
 `.trim();
 
-    // ── 5. Call GPT-4o ───────────────────────────────────────────────────────
-    const openaiKey = Deno.env.get("OPENAI_API_KEY");
-    if (!openaiKey) throw new Error("OPENAI_API_KEY not set");
+    // ── 5. Call Gemini 1.5 Pro ───────────────────────────────────────────────
+    // Pro model used here (vs Flash elsewhere) because coaching insight quality
+    // directly affects premium retention — a weak insight drives cancellations.
+    const geminiKey = Deno.env.get("GEMINI_API_KEY");
+    if (!geminiKey) throw new Error("GEMINI_API_KEY not set");
 
-    const gptResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${openaiKey}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        max_tokens: 600,
-        temperature: 0.7,
-        messages: [
-          { role: "system", content: INSIGHT_PROMPT },
-          { role: "user", content: contextText },
-        ],
-      }),
-    });
-
-    if (!gptResponse.ok) {
-      throw new Error(`OpenAI error ${gptResponse.status}: ${await gptResponse.text()}`);
-    }
-
-    const gptJson = await gptResponse.json();
-    const rawContent = gptJson.choices[0].message.content.trim();
-    const insightArray = JSON.parse(rawContent);
+    const rawContent = await _callGemini(
+      geminiKey,
+      "gemini-1.5-pro",
+      INSIGHT_PROMPT + "\n\n" + contextText,
+      { temperature: 0.7, maxOutputTokens: 600 }
+    );
+    const insightArray = JSON.parse(_cleanJson(rawContent));
 
     if (!Array.isArray(insightArray)) {
-      throw new Error("GPT response was not a JSON array");
+      throw new Error("Gemini response was not a JSON array");
     }
 
     // ── 6. Upsert insights into DB ───────────────────────────────────────────
@@ -208,3 +193,39 @@ ${summaryText || "(no logs this week)"}
     );
   }
 });
+
+// ─── Gemini helpers ───────────────────────────────────────────────────────────
+
+async function _callGemini(
+  apiKey: string,
+  model: string,
+  prompt: string,
+  config: { temperature: number; maxOutputTokens: number }
+): Promise<string> {
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: config,
+      }),
+    }
+  );
+  if (!res.ok) {
+    throw new Error(`Gemini API error (${res.status}): ${await res.text()}`);
+  }
+  const json = await res.json();
+  const text: string = json.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+  if (!text) throw new Error("Empty response from Gemini");
+  return text;
+}
+
+function _cleanJson(text: string): string {
+  return text
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+}

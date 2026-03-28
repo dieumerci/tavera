@@ -1,8 +1,8 @@
 # TAVERA — Product Roadmap & Development Checklist
 
-**Document Version:** 1.8
+**Document Version:** 1.9
 **Last Updated:** March 28, 2026
-**Status:** Phase 1 Complete · Phase 2 In Progress (code ~97% done — external setup + coaching cron remaining)
+**Status:** Phase 1 Complete · Phase 2 In Progress (code ~98% done — GEMINI_API_KEY secret + external setup remaining)
 **Author:** Dee (Founder)
 
 > **Legend:** ✅ Complete · 🔄 In Progress · ⏭ Deferred · ❌ Not started
@@ -224,6 +224,8 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 **Status: 🔄 IN PROGRESS**
 
 > **Infrastructure complete (March 26, 2026):** Challenges tab wired to shell nav (Tab 2). Floating FAB with notch. Strong haptics. Account deletion Edge Function live. Challenge scoring (`challenge-notifier`) wired to all log paths. Water intake persisted to `daily_stats`. Dashboard cold-start data loading fixed. Camera permission screen fixed. Profile back-button crash fixed. Paywall sheet helper + Meal Planner / Challenges features added. `DateFormatting.toIsoDateString()` extension centralised. PostHog analytics integrated (8 key events, no-op in dev). Cold-start auth fix applied to all AsyncNotifier controllers. Adaptive meal memory wired to both log paths. Migration 005: `increment_known_meal_count` RPC, `grocery_lists` upsert constraint, challenges RLS self-recursion fixed.
+
+> **AI provider migration (March 28, 2026):** All 4 OpenAI-powered Edge Functions migrated to Google Gemini API for ~66× cost reduction vs GPT-4o. `analyse-meal` v4 → Gemini 1.5 Flash (image fetched as base64 `inlineData`). `generate-meal-plan` v2, `swap-planned-meal` v2 → Gemini 1.5 Flash. `generate-coaching` v2 → Gemini 1.5 Pro (quality-sensitive; Pro retained for premium retention). **Action required:** Add `GEMINI_API_KEY` secret to Supabase Edge Functions (get free key from aistudio.google.com — 1,500 free req/day). `OPENAI_API_KEY` secret can be kept or removed.
 
 > **Subscription & Paywall flexibility note:** The monetisation model and paywall placement are not yet finalised. The architecture must remain flexible enough to support different models (freemium, hard paywall, trial-first) without requiring significant rewrites. Gate features behind a capabilities check that abstracts away the specific model. RevenueCat is the planned payment layer; it supports model changes at the product configuration level.
 
