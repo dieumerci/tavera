@@ -8,21 +8,16 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 // Generates a personalised 7-day meal plan + grocery list for a premium user.
 // Requires at least 7 days of meal logs to personalise effectively.
 //
-// POST body:
-//   {
-//     user_id:    string,
-//     week_start: string (YYYY-MM-DD, Monday of the target week)
-//   }
+// POST body (full week):
+//   { user_id: string, week_start: string (YYYY-MM-DD) }
+//
+// POST body (single day regeneration):
+//   { user_id: string, week_start: string, day_index: number (0=Mon…6=Sun) }
+//
+// When day_index is provided: regenerates only that day's meals and merges
+// them back into the existing plan without touching the other 6 days.
 //
 // Returns: { meal_plan: MealPlan, grocery_list: GroceryList }
-//
-// Flow:
-//   1. Fetch user profile (calorie goal, macros preference if stored)
-//   2. Call analyse-eating-patterns internally for personalisation context
-//   3. Build GPT-4o prompt with context + preferences
-//   4. Parse structured JSON response (7 days × 3–4 meals)
-//   5. Derive grocery list from ingredients mentioned in meals
-//   6. Upsert both meal_plan and grocery_list rows
 // ─────────────────────────────────────────────────────────────────────────────
 
 const corsHeaders = {
@@ -73,6 +68,33 @@ Rules:
 - Grocery list should consolidate ingredients across all 7 days
 - Keep prep times realistic: ≤ 15 min for breakfast/snack, ≤ 30 min for lunch/dinner`;
 
+const SINGLE_DAY_PROMPT = `You are a professional dietitian regenerating meals for ONE specific day.
+Return ONLY a valid JSON object — no markdown fences, no explanation.
+
+JSON structure:
+{
+  "day_index": number,
+  "meals": [
+    {
+      "slot": "breakfast" | "lunch" | "dinner" | "snack",
+      "name": "string",
+      "description": "string (≤ 120 chars, key ingredients + prep method)",
+      "calories": number,
+      "protein_g": number,
+      "carbs_g": number,
+      "fat_g": number,
+      "prep_minutes": number
+    }
+  ]
+}
+
+Rules:
+- Return exactly the day_index requested
+- Calories for the day must be within 10% of the user's calorie_target
+- Include 3 meals + 1 optional snack
+- Do NOT repeat meals from the existing_meals context provided
+- Keep prep times realistic: ≤ 15 min for breakfast/snack, ≤ 30 min for lunch/dinner`;
+
 const GROCERY_PROMPT = `Extract a deduplicated grocery list from the meal plan.
 Group items by: produce, protein, dairy, grains, pantry, condiments, beverages, frozen, other.
 Consolidate quantities where possible (e.g. "chicken breast 700g" covers multiple days).`;
@@ -83,7 +105,12 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { user_id, week_start } = await req.json();
+    const body = await req.json();
+    const { user_id, week_start, day_index } = body as {
+      user_id: string;
+      week_start: string;
+      day_index?: number;
+    };
 
     if (!user_id || !week_start) {
       return new Response(
@@ -106,8 +133,7 @@ Deno.serve(async (req: Request) => {
 
     if (profileErr) throw new Error(profileErr.message);
 
-    // ── 2. Eating patterns (internal call) ───────────────────────────────────
-    // Reuse the logic inline (avoids an extra HTTP hop to the other function).
+    // ── 2. Eating patterns (inline — avoids extra HTTP hop) ──────────────────
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
@@ -131,8 +157,20 @@ Deno.serve(async (req: Request) => {
       .slice(0, 8)
       .map(([name]) => name);
 
-    // ── 3. Build GPT prompt ──────────────────────────────────────────────────
     const calorieTarget = profile?.calorie_goal ?? 2000;
+    const openaiKey = Deno.env.get("OPENAI_API_KEY");
+    if (!openaiKey) throw new Error("OPENAI_API_KEY not set");
+
+    // ── Branch: single-day regeneration ─────────────────────────────────────
+    if (day_index !== undefined) {
+      return await _regenerateDay({
+        supabase, user_id, week_start, day_index,
+        calorieTarget, topFoods, profile, openaiKey,
+        corsHeaders,
+      });
+    }
+
+    // ── 3. Build GPT prompt (full week) ──────────────────────────────────────
     const userContext = `
 User: ${profile?.name ?? "there"}
 Calorie target: ${calorieTarget} kcal/day
@@ -141,16 +179,10 @@ Frequently eaten foods (incorporate where suitable): ${topFoods.join(", ") || "n
 Week of: ${week_start}
 `.trim();
 
-    const openaiKey = Deno.env.get("OPENAI_API_KEY");
-    if (!openaiKey) throw new Error("OPENAI_API_KEY not set");
-
     // ── 4. Call GPT-4o ───────────────────────────────────────────────────────
     const gptResponse = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${openaiKey}`,
-      },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiKey}` },
       body: JSON.stringify({
         model: "gpt-4o",
         max_tokens: 3000,
@@ -175,8 +207,7 @@ Week of: ${week_start}
       .from("meal_plans")
       .upsert(
         {
-          user_id,
-          week_start,
+          user_id, week_start,
           calorie_target: calorieTarget,
           days: planData.days ?? [],
           ai_notes: planData.ai_notes ?? null,
@@ -188,14 +219,10 @@ Week of: ${week_start}
 
     if (planErr) throw new Error(planErr.message);
 
-    // ── 6. Build and upsert grocery_list ────────────────────────────────────
+    // ── 6. Build and upsert grocery_list ─────────────────────────────────────
     const groceryItems = (planData.grocery_items ?? []).map(
-      (item: {
-        name: string;
-        quantity: string;
-        category: string;
-        used_in_meals?: string[];
-      }, index: number) => ({
+      (item: { name: string; quantity: string; category: string; used_in_meals?: string[] },
+       index: number) => ({
         id: `item_${index}`,
         name: item.name,
         quantity: item.quantity,
@@ -208,13 +235,7 @@ Week of: ${week_start}
     const { data: groceryList, error: groceryErr } = await supabase
       .from("grocery_lists")
       .upsert(
-        {
-          user_id,
-          meal_plan_id: mealPlan.id,
-          week_start,
-          items: groceryItems,
-          is_shared: false,
-        },
+        { user_id, meal_plan_id: mealPlan.id, week_start, items: groceryItems, is_shared: false },
         { onConflict: "user_id,meal_plan_id" }
       )
       .select()
@@ -235,3 +256,105 @@ Week of: ${week_start}
     );
   }
 });
+
+// ─── Single-day regeneration helper ──────────────────────────────────────────
+//
+// Fetches the existing plan, asks GPT for one fresh day, merges it in,
+// and updates the `days` JSONB column in-place.
+// The grocery list is NOT regenerated — grocery items for a single day are
+// too granular to meaningfully diff; users can edit the list manually.
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function _regenerateDay(opts: {
+  supabase: ReturnType<typeof createClient>;
+  user_id: string;
+  week_start: string;
+  day_index: number;
+  calorieTarget: number;
+  topFoods: string[];
+  profile: Record<string, unknown> | null;
+  openaiKey: string;
+  corsHeaders: Record<string, string>;
+}): Promise<Response> {
+  const {
+    supabase, user_id, week_start, day_index,
+    calorieTarget, topFoods, profile, openaiKey, corsHeaders,
+  } = opts;
+
+  const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+  // Load the existing plan so we can surface existing meal names to GPT.
+  const { data: existingPlan, error: planErr } = await supabase
+    .from("meal_plans")
+    .select("id, days")
+    .eq("user_id", user_id)
+    .eq("week_start", week_start)
+    .maybeSingle();
+
+  if (planErr) throw new Error(planErr.message);
+  if (!existingPlan) throw new Error("No existing plan found — generate the full week first.");
+
+  // Collect meal names from all other days to avoid repeats.
+  const existingDays: Array<{ day_index: number; meals: Array<{ name: string }> }> =
+    existingPlan.days ?? [];
+  const otherMealNames = existingDays
+    .filter((d) => d.day_index !== day_index)
+    .flatMap((d) => d.meals.map((m) => m.name))
+    .filter(Boolean);
+
+  const userContext = `
+User: ${profile?.name ?? "there"}
+Calorie target: ${calorieTarget} kcal/day
+Day to regenerate: ${DAY_NAMES[day_index] ?? `Day ${day_index}`} (day_index: ${day_index})
+Frequently eaten foods (incorporate where suitable): ${topFoods.join(", ") || "none yet"}
+Already used in other days of the week (do not repeat): ${otherMealNames.slice(0, 20).join(", ") || "none"}
+`.trim();
+
+  const gptResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiKey}` },
+    body: JSON.stringify({
+      model: "gpt-4o",
+      max_tokens: 800,
+      temperature: 0.7,
+      messages: [
+        { role: "system", content: SINGLE_DAY_PROMPT },
+        { role: "user", content: userContext },
+      ],
+    }),
+  });
+
+  if (!gptResponse.ok) {
+    throw new Error(`OpenAI error ${gptResponse.status}: ${await gptResponse.text()}`);
+  }
+
+  const gptJson = await gptResponse.json();
+  const rawContent = gptJson.choices[0].message.content.trim();
+  const newDay = JSON.parse(rawContent);
+
+  // Merge the new day into the existing days array.
+  const mergedDays = existingDays.filter((d) => d.day_index !== day_index);
+  mergedDays.push({ day_index, meals: newDay.meals ?? [] });
+  mergedDays.sort((a, b) => a.day_index - b.day_index);
+
+  const { data: updatedPlan, error: updateErr } = await supabase
+    .from("meal_plans")
+    .update({ days: mergedDays })
+    .eq("id", existingPlan.id)
+    .select()
+    .single();
+
+  if (updateErr) throw new Error(updateErr.message);
+
+  // Return the updated plan; grocery_list is unchanged (client reloads both).
+  const { data: groceryList } = await supabase
+    .from("grocery_lists")
+    .select()
+    .eq("meal_plan_id", existingPlan.id)
+    .maybeSingle();
+
+  return new Response(
+    JSON.stringify({ meal_plan: updatedPlan, grocery_list: groceryList ?? null }),
+    { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}

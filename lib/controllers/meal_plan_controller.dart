@@ -20,12 +20,17 @@ class MealPlanState {
   final GroceryList? groceryList;
   final bool isGenerating;
   final String? error;
+  /// Non-null while the swap bottom sheet is open with alternatives to choose from.
+  final List<PlannedMeal>? swapAlternatives;
+  final bool isLoadingSwap;
 
   const MealPlanState({
     this.plan,
     this.groceryList,
     this.isGenerating = false,
     this.error,
+    this.swapAlternatives,
+    this.isLoadingSwap = false,
   });
 
   MealPlanState copyWith({
@@ -33,12 +38,19 @@ class MealPlanState {
     GroceryList? groceryList,
     bool? isGenerating,
     String? error,
+    List<PlannedMeal>? swapAlternatives,
+    bool clearSwapAlternatives = false,
+    bool? isLoadingSwap,
   }) =>
       MealPlanState(
         plan: plan ?? this.plan,
         groceryList: groceryList ?? this.groceryList,
         isGenerating: isGenerating ?? this.isGenerating,
         error: error,
+        swapAlternatives: clearSwapAlternatives
+            ? null
+            : swapAlternatives ?? this.swapAlternatives,
+        isLoadingSwap: isLoadingSwap ?? this.isLoadingSwap,
       );
 }
 
@@ -128,6 +140,154 @@ class MealPlanController extends AsyncNotifier<MealPlanState> {
         ),
       );
     }
+  }
+
+  // ── Regenerate single day ─────────────────────────────────────────────────
+
+  /// Regenerates meals for [dayIndex] (0 = Monday) without touching other days.
+  /// The existing grocery list is preserved; a note is shown in the UI.
+  Future<void> regenerateDay(int dayIndex) async {
+    final client = Supabase.instance.client;
+    final userId = client.auth.currentUser?.id;
+    if (userId == null) return;
+
+    final monday = _mondayOf(DateTime.now());
+    final mondayStr = _fmtDate(monday);
+
+    state = AsyncValue.data(
+      (state.valueOrNull ?? const MealPlanState())
+          .copyWith(isGenerating: true, error: null),
+    );
+
+    try {
+      await client.functions.invoke(
+        'generate-meal-plan',
+        body: {'user_id': userId, 'week_start': mondayStr, 'day_index': dayIndex},
+      );
+      state = await AsyncValue.guard(_loadCurrentWeek);
+    } catch (e) {
+      state = AsyncValue.data(
+        (state.valueOrNull ?? const MealPlanState()).copyWith(
+          isGenerating: false,
+          error: e.toString(),
+        ),
+      );
+    }
+  }
+
+  // ── Meal swap ─────────────────────────────────────────────────────────────
+
+  /// Fetches 3 alternative meals for [slot] on [dayIndex] from GPT.
+  /// Sets [isLoadingSwap] while the request is in flight, then stores
+  /// [swapAlternatives] for the bottom sheet to display.
+  Future<void> loadSwapAlternatives({
+    required int dayIndex,
+    required MealSlot slot,
+    required String currentMealName,
+  }) async {
+    final client = Supabase.instance.client;
+    final userId = client.auth.currentUser?.id;
+    final planId = state.valueOrNull?.plan?.id;
+    if (userId == null || planId == null) return;
+
+    state = AsyncValue.data(
+      (state.valueOrNull ?? const MealPlanState()).copyWith(
+        isLoadingSwap: true,
+        error: null,
+        clearSwapAlternatives: true,
+      ),
+    );
+
+    try {
+      final result = await client.functions.invoke(
+        'swap-planned-meal',
+        body: {
+          'user_id': userId,
+          'plan_id': planId,
+          'day_index': dayIndex,
+          'slot': slot.name,
+          'current_meal_name': currentMealName,
+        },
+      );
+      final data = result.data as Map<String, dynamic>?;
+      final altList = data?['alternatives'] as List<dynamic>? ?? [];
+      final alternatives = altList
+          .map((m) => PlannedMeal.fromMap(m as Map<String, dynamic>))
+          .toList();
+
+      state = AsyncValue.data(
+        (state.valueOrNull ?? const MealPlanState()).copyWith(
+          isLoadingSwap: false,
+          swapAlternatives: alternatives,
+        ),
+      );
+    } catch (e) {
+      state = AsyncValue.data(
+        (state.valueOrNull ?? const MealPlanState()).copyWith(
+          isLoadingSwap: false,
+          error: e.toString(),
+          clearSwapAlternatives: true,
+        ),
+      );
+    }
+  }
+
+  /// Replaces a meal in the current plan with [replacement] and persists.
+  Future<void> applySwap({
+    required int dayIndex,
+    required MealSlot slot,
+    required PlannedMeal replacement,
+  }) async {
+    final current = state.valueOrNull;
+    final plan = current?.plan;
+    if (plan == null) return;
+
+    // Build the updated days list.
+    final updatedDays = plan.days.map((day) {
+      if (day.dayIndex != dayIndex) return day;
+      final updatedMeals = day.meals.map((m) {
+        return m.slot == slot ? replacement : m;
+      }).toList();
+      return MealPlanDay(dayIndex: day.dayIndex, meals: updatedMeals);
+    }).toList();
+
+    // Optimistic update.
+    final updatedPlan = MealPlan(
+      id: plan.id,
+      userId: plan.userId,
+      weekStart: plan.weekStart,
+      calorieTarget: plan.calorieTarget,
+      days: updatedDays,
+      aiNotes: plan.aiNotes,
+      createdAt: plan.createdAt,
+    );
+
+    state = AsyncValue.data(
+      current!.copyWith(
+        plan: updatedPlan,
+        clearSwapAlternatives: true,
+        isLoadingSwap: false,
+      ),
+    );
+
+    // Persist to DB.
+    final client = Supabase.instance.client;
+    try {
+      await client.from('meal_plans').update({
+        'days': updatedDays.map((d) => d.toMap()).toList(),
+      }).eq('id', plan.id);
+    } catch (_) {
+      // Roll back on failure.
+      state = AsyncValue.data(current);
+    }
+  }
+
+  /// Clears any loaded swap alternatives without applying them.
+  void dismissSwap() {
+    state = AsyncValue.data(
+      (state.valueOrNull ?? const MealPlanState())
+          .copyWith(clearSwapAlternatives: true, isLoadingSwap: false),
+    );
   }
 
   // ── Grocery list ──────────────────────────────────────────────────────────

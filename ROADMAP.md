@@ -1,8 +1,8 @@
 # TAVERA — Product Roadmap & Development Checklist
 
-**Document Version:** 1.6
-**Last Updated:** March 26, 2026
-**Status:** Phase 1 Complete · Phase 2 In Progress (code ~90% done — external setup remaining)
+**Document Version:** 1.7
+**Last Updated:** March 27, 2026
+**Status:** Phase 1 Complete · Phase 2 In Progress (code ~95% done — external setup remaining)
 **Author:** Dee (Founder)
 
 > **Legend:** ✅ Complete · 🔄 In Progress · ⏭ Deferred · ❌ Not started
@@ -297,7 +297,7 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 - [ ] Implement achievement unlock notifications with celebratory animation
 
 #### Phase 2 Social Challenges scope
-- [ ] Maximum 10 participants per challenge in Phase 2 (scale limits deferred)
+- ✅ Maximum 10 participants per challenge — `Challenge.maxParticipants` constant; client-side count check in `join()` before `_joinChallenge()`; Join button disabled + shows "Full" when at cap; capacity shown as "X/10" chip (red when full)
 - ✅ Challenge leave flow: non-creator participants can leave via confirm dialog on detail screen — `_LeaveButton` widget
 - [ ] Custom challenge types deferred to Phase 3
 
@@ -316,8 +316,8 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 - ✅ Design OpenAI prompt template: emphasise pattern continuity (similar ingredients to what user already eats), nutritional gap filling, practical meal prep time
 - ✅ Build meal plan display screen: week view with day tabs, each meal expandable — `MealPlannerScreen` Plan tab
 - ✅ Implement meal plan regeneration: "Regenerate week" — refresh icon in app bar calls `generate()`
-- [ ] Implement "Regenerate day" action — requires Edge Function `day_index` parameter
-- [ ] Allow individual meal swaps: tap a meal → AI suggests 3 alternatives
+- ✅ Implement "Regenerate day" action — `day_index` param to `generate-meal-plan`; long-press day chip or tap "Regenerate" in summary bar; confirm dialog before calling; merges new day into existing plan
+- ✅ Allow individual meal swaps: tap ⇄ icon on meal card → `swap-planned-meal` Edge Function returns 3 alternatives; `_SwapSheet` bottom sheet; `applySwap()` persists choice with optimistic update
 
 #### Grocery list
 - ✅ Build grocery list generator from confirmed meal plan: aggregate ingredients across all meals, de-duplicate, sum quantities — `generate-meal-plan` Edge Function populates `grocery_lists` table

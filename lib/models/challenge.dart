@@ -72,6 +72,9 @@ class Challenge {
 
   // Populated via join when loading the challenge list / detail.
   final List<ChallengeParticipant> participants;
+  /// Explicit count used when loading list views without full participant join.
+  /// Falls back to `participants.length` when not set.
+  final int? _participantCount;
 
   const Challenge({
     required this.id,
@@ -86,7 +89,14 @@ class Challenge {
     required this.inviteCode,
     required this.createdAt,
     this.participants = const [],
-  });
+    int? participantCount,
+  }) : _participantCount = participantCount;
+
+  static const maxParticipants = 10;
+
+  int get participantCount =>
+      _participantCount ?? participants.length;
+  bool get isFull => participantCount >= maxParticipants;
 
   bool get isActive {
     final now = DateTime.now();
@@ -101,7 +111,9 @@ class Challenge {
     return diff < 0 ? 0 : diff;
   }
 
-  factory Challenge.fromMap(Map<String, dynamic> map) => Challenge(
+  factory Challenge.fromMap(Map<String, dynamic> map,
+      {int? participantCount}) =>
+      Challenge(
         id: map['id'] as String,
         creatorId: map['creator_id'] as String,
         title: map['title'] as String,
@@ -121,6 +133,23 @@ class Challenge {
                     ChallengeParticipant.fromMap(e as Map<String, dynamic>))
                 .toList() ??
             [],
+        participantCount: participantCount,
+      );
+
+  Challenge withParticipantCount(int count) => Challenge(
+        id: id,
+        creatorId: creatorId,
+        title: title,
+        description: description,
+        type: type,
+        targetValue: targetValue,
+        startDate: startDate,
+        endDate: endDate,
+        isPublic: isPublic,
+        inviteCode: inviteCode,
+        createdAt: createdAt,
+        participants: participants,
+        participantCount: count,
       );
 
   Map<String, dynamic> toInsertMap() => {

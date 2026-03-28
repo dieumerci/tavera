@@ -145,6 +145,16 @@ class MyChallengesNotifier extends AsyncNotifier<List<Challenge>> {
 
     if (resolvedId == null) return false;
 
+    // ── Participant cap ──────────────────────────────────────────────────────
+    // Phase 2 cap: maximum 10 participants per challenge.
+    final countRows = await client
+        .from('challenge_participants')
+        .select('id')
+        .eq('challenge_id', resolvedId);
+    if ((countRows as List<dynamic>).length >= Challenge.maxParticipants) {
+      return false; // Full — caller should surface "Challenge is full" message.
+    }
+
     try {
       await _joinChallenge(client, userId, resolvedId);
       AnalyticsService.track('challenge_joined', properties: {
@@ -248,9 +258,28 @@ class PublicChallengesNotifier extends AsyncNotifier<List<Challenge>> {
         .map((r) => r['challenge_id'] as String)
         .toSet();
 
-    return (rows as List<dynamic>)
+    final challengeList = (rows as List<dynamic>)
         .map((e) => Challenge.fromMap(e as Map<String, dynamic>))
         .where((c) => !myIds.contains(c.id))
+        .toList();
+
+    if (challengeList.isEmpty) return challengeList;
+
+    // Batch-fetch participant counts for all returned challenges.
+    final ids = challengeList.map((c) => c.id).toList();
+    final countRows = await client
+        .from('challenge_participants')
+        .select('challenge_id')
+        .inFilter('challenge_id', ids);
+
+    final counts = <String, int>{};
+    for (final row in (countRows as List<dynamic>)) {
+      final cid = row['challenge_id'] as String;
+      counts[cid] = (counts[cid] ?? 0) + 1;
+    }
+
+    return challengeList
+        .map((c) => c.withParticipantCount(counts[c.id] ?? 0))
         .toList();
   }
 

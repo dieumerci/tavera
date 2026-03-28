@@ -93,7 +93,8 @@ class _ChallengesScreenState extends ConsumerState<ChallengesScreen>
                   .read(myChallengesProvider.notifier)
                   .join(inviteCode: codeCtrl.text);
               if (mounted && !success) {
-                _showErrorSnack('Invite code not found. Please check and try again.');
+                _showErrorSnack(
+                    'Could not join — code invalid or challenge is full (10/10).');
               }
             },
             child: Text(
@@ -329,21 +330,29 @@ class _ChallengeCard extends ConsumerWidget {
                 if (showJoinButton) ...[
                   const SizedBox(width: 8),
                   ElevatedButton(
-                    onPressed: () async {
-                      HapticService.heavy();
-                      await ref
-                          .read(myChallengesProvider.notifier)
-                          .join(challengeId: challenge.id);
-                      ref.invalidate(publicChallengesProvider);
-                    },
+                    onPressed: challenge.isFull
+                        ? null
+                        : () async {
+                            HapticService.heavy();
+                            final ok = await ref
+                                .read(myChallengesProvider.notifier)
+                                .join(challengeId: challenge.id);
+                            if (ok) {
+                              ref.invalidate(publicChallengesProvider);
+                            }
+                          },
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 8),
                       minimumSize: Size.zero,
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      disabledBackgroundColor:
+                          AppColors.border,
                     ),
-                    child: const Text('Join',
-                        style: TextStyle(fontSize: 13)),
+                    child: Text(
+                      challenge.isFull ? 'Full' : 'Join',
+                      style: const TextStyle(fontSize: 13),
+                    ),
                   ),
                 ],
               ],
@@ -376,8 +385,10 @@ class _ChallengeCard extends ConsumerWidget {
                 const SizedBox(width: 8),
                 _ChipPill(
                   icon: Icons.people_outline_rounded,
-                  label: '${challenge.participants.length} joined',
-                  color: AppColors.textSecondary,
+                  label: '${challenge.participantCount}/${Challenge.maxParticipants}',
+                  color: challenge.isFull
+                      ? AppColors.danger
+                      : AppColors.textSecondary,
                 ),
                 if (!challenge.isPublic) ...[
                   const SizedBox(width: 8),
