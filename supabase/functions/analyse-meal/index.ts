@@ -25,19 +25,22 @@ JSON structure:
       "protein": number (grams, 1dp),
       "carbs": number (grams, 1dp),
       "fat": number (grams, 1dp),
+      "fiber_g": number (grams, 1dp — dietary fibre only),
       "confidence": number (0.0–1.0, your certainty about identification)
     }
   ],
   "total_calories": number,
   "total_protein": number,
   "total_carbs": number,
-  "total_fat": number
+  "total_fat": number,
+  "total_fiber": number
 }
 
 Rules:
 - Use realistic portion sizes based on visual estimation
 - Calories and macros must be internally consistent (calories ≈ protein*4 + carbs*4 + fat*9)
-- If you cannot identify food at all, return: {"items":[],"total_calories":0,"total_protein":0,"total_carbs":0,"total_fat":0}
+- fiber_g must be ≤ carbs for the same item (fibre is a subset of carbohydrates)
+- If you cannot identify food at all, return: {"items":[],"total_calories":0,"total_protein":0,"total_carbs":0,"total_fat":0,"total_fiber":0}
 - Do not invent items you cannot see`;
 
 Deno.serve(async (req: Request) => {

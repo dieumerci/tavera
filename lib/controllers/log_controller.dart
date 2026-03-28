@@ -356,6 +356,7 @@ Future<MealLog?> directLogMeal(
   final totalProtein  = items.fold<double>(0.0, (s, i) => s + (i.protein ?? 0));
   final totalCarbs    = items.fold<double>(0.0, (s, i) => s + (i.carbs   ?? 0));
   final totalFat      = items.fold<double>(0.0, (s, i) => s + (i.fat     ?? 0));
+  final totalFiber    = items.fold<double>(0.0, (s, i) => s + (i.fiber   ?? 0));
 
   try {
     final response = await client.from('meal_logs').insert({
@@ -366,6 +367,7 @@ Future<MealLog?> directLogMeal(
       'total_protein': totalProtein,
       'total_carbs': totalCarbs,
       'total_fat': totalFat,
+      'total_fiber': totalFiber,
     }).select().single();
 
     final log = MealLog.fromMap(response);

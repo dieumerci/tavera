@@ -1,8 +1,8 @@
 # TAVERA — Product Roadmap & Development Checklist
 
-**Document Version:** 1.7
-**Last Updated:** March 27, 2026
-**Status:** Phase 1 Complete · Phase 2 In Progress (code ~95% done — external setup remaining)
+**Document Version:** 1.8
+**Last Updated:** March 28, 2026
+**Status:** Phase 1 Complete · Phase 2 In Progress (code ~97% done — external setup + coaching cron remaining)
 **Author:** Dee (Founder)
 
 > **Legend:** ✅ Complete · 🔄 In Progress · ⏭ Deferred · ❌ Not started
@@ -323,7 +323,7 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 - ✅ Build grocery list generator from confirmed meal plan: aggregate ingredients across all meals, de-duplicate, sum quantities — `generate-meal-plan` Edge Function populates `grocery_lists` table
 - ✅ Grocery list grouped by category: Produce, Protein, Dairy, Pantry, Frozen — `GroceryItem.category` enum + grouped display
 - ✅ Check-off UI: tap to mark items purchased, persists state locally — `toggleGroceryItem()` with optimistic update + DB sync
-- [ ] Edit quantities and add/remove items manually
+- ✅ Edit quantities and add/remove items manually — long-press → `_GroceryItemActionSheet`; `+` FAB triggers `_showAddItemDialog`; `editGroceryItem` / `removeGroceryItem` / `addGroceryItem` in controller
 - ✅ Export grocery list as plain text (share sheet) — share token copied to clipboard via `shareGroceryList()`
 
 #### Grocery delivery integration (architecture only in Phase 2 — live integration Phase 3)
@@ -347,7 +347,7 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 #### Net Carbs Toggle _(Priority 4 — Low effort, Medium impact)_
 - ✅ Add `netCarbsMode` bool to `UserProfile` and persist to `profiles.net_carbs_mode` (migration 007)
 - ✅ Add toggle tile in Profile → Goals section (live-updates via Realtime stream)
-- [ ] Wherever carbs are displayed (dashboard, history, review sheet), show `carbs − fiber` when mode is on — awaiting fiber field in `meal_logs` + Edge Function update
+- ✅ Wherever carbs are displayed (dashboard, history, meal detail sheet), show `carbs − fiber` when mode is on — `fiber_g` per item from `analyse-meal` v3; `total_fiber` in `meal_logs` (migration 008); `_netCarbs()` helper in both screens; label switches to "Net Carbs"
 - [ ] Update coaching insights to use net carbs in prompt when mode is on
 
 ### Analytics

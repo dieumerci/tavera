@@ -11,6 +11,13 @@ import '../../models/meal_log.dart';
 import '../../services/haptic_service.dart';
 import '../../widgets/sheet_handle.dart';
 
+/// Returns displayable carbs: subtracts fiber when Net Carbs Mode is on.
+/// Falls back gracefully to [totalCarbs] when [totalFiber] is null.
+double _netCarbs(double totalCarbs, double? totalFiber, bool netMode) {
+  if (!netMode || totalFiber == null) return totalCarbs;
+  return (totalCarbs - totalFiber).clamp(0.0, totalCarbs);
+}
+
 class HistoryScreen extends ConsumerStatefulWidget {
   const HistoryScreen({super.key});
 
@@ -153,10 +160,17 @@ class _LogBody extends ConsumerWidget {
         logs.fold(0, (s, l) => s + l.totalCalories);
     final totalProtein =
         logs.fold(0.0, (s, l) => s + (l.totalProtein ?? 0));
-    final totalCarbs =
+    final rawCarbs =
         logs.fold(0.0, (s, l) => s + (l.totalCarbs ?? 0));
+    final totalFiber =
+        logs.fold(0.0, (s, l) => s + (l.totalFiber ?? 0));
     final totalFat =
         logs.fold(0.0, (s, l) => s + (l.totalFat ?? 0));
+
+    final netCarbsMode =
+        ref.watch(userProfileProvider).valueOrNull?.netCarbsMode ?? false;
+    final totalCarbs = _netCarbs(rawCarbs, totalFiber, netCarbsMode);
+    final carbLabel = netCarbsMode ? 'Net Carbs' : 'Carbs';
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
@@ -168,6 +182,7 @@ class _LogBody extends ConsumerWidget {
           totalProtein: totalProtein,
           totalCarbs: totalCarbs,
           totalFat: totalFat,
+          carbLabel: carbLabel,
         ),
 
         const SizedBox(height: 20),
@@ -201,6 +216,7 @@ class _SummaryCard extends StatelessWidget {
   final double totalProtein;
   final double totalCarbs;
   final double totalFat;
+  final String carbLabel;
 
   const _SummaryCard({
     required this.totalCalories,
@@ -209,6 +225,7 @@ class _SummaryCard extends StatelessWidget {
     required this.totalProtein,
     required this.totalCarbs,
     required this.totalFat,
+    this.carbLabel = 'Carbs',
   });
 
   @override
@@ -292,7 +309,7 @@ class _SummaryCard extends StatelessWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: _MacroBar(
-                    label: 'Carbs',
+                    label: carbLabel,
                     value: totalCarbs,
                     color: const Color(0xFFFFD166),
                   ),
@@ -354,7 +371,7 @@ class _MacroBar extends StatelessWidget {
             value: (value /
                     (label == 'Protein'
                         ? 150
-                        : label == 'Carbs'
+                        : label.contains('Carb')
                             ? 250
                             : 65))
                 .clamp(0.0, 1.0),
@@ -529,6 +546,14 @@ class MealDetailSheet extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final timeLabel = DateFormat('EEE, MMM d · h:mm a').format(log.loggedAt);
+    final netCarbsMode =
+        ref.watch(userProfileProvider).valueOrNull?.netCarbsMode ?? false;
+    final displayCarbs = _netCarbs(
+      log.totalCarbs ?? 0,
+      log.totalFiber,
+      netCarbsMode,
+    );
+    final carbLabel = netCarbsMode ? 'Net Carbs' : 'Carbs';
 
     return DraggableScrollableSheet(
       initialChildSize: 0.72,
@@ -619,8 +644,8 @@ class MealDetailSheet extends ConsumerWidget {
                           if (log.totalCarbs != null) ...[
                             const SizedBox(width: 8),
                             _MacroChip(
-                              label: 'Carbs',
-                              value: log.totalCarbs!,
+                              label: carbLabel,
+                              value: displayCarbs,
                               color: const Color(0xFFFFD166),
                             ),
                           ],

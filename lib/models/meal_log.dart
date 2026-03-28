@@ -10,6 +10,9 @@ class MealLog {
   final double? totalProtein;
   final double? totalCarbs;
   final double? totalFat;
+  /// Sum of dietary fibre across all items (grams).
+  /// Null for logs created before migration 008 (pre net-carbs support).
+  final double? totalFiber;
 
   const MealLog({
     required this.id,
@@ -21,6 +24,7 @@ class MealLog {
     this.totalProtein,
     this.totalCarbs,
     this.totalFat,
+    this.totalFiber,
   });
 
   factory MealLog.fromMap(Map<String, dynamic> map) => MealLog(
@@ -35,6 +39,7 @@ class MealLog {
         totalProtein: (map['total_protein'] as num?)?.toDouble(),
         totalCarbs: (map['total_carbs'] as num?)?.toDouble(),
         totalFat: (map['total_fat'] as num?)?.toDouble(),
+        totalFiber: (map['total_fiber'] as num?)?.toDouble(),
       );
 
   Map<String, dynamic> toMap() => {
@@ -47,5 +52,6 @@ class MealLog {
         'total_protein': totalProtein,
         'total_carbs': totalCarbs,
         'total_fat': totalFat,
+        'total_fiber': totalFiber,
       };
 }
