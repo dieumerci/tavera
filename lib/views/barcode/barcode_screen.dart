@@ -1,32 +1,33 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../controllers/log_controller.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../models/food_item.dart';
+import '../../models/product_match.dart';
 import '../../services/analytics_service.dart';
 import '../../services/haptic_service.dart';
+import '../../services/ocr_extraction_service.dart';
+import '../../services/product_identification_service.dart';
 import '../../widgets/sheet_handle.dart';
 
 // ─── Public entry-point ───────────────────────────────────────────────────────
 
-class BarcodeScanScreen extends StatefulWidget {
+class BarcodeScanScreen extends ConsumerStatefulWidget {
   const BarcodeScanScreen({super.key});
 
   @override
-  State<BarcodeScanScreen> createState() => _BarcodeScanScreenState();
+  ConsumerState<BarcodeScanScreen> createState() => _BarcodeScanScreenState();
 }
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
-enum _ScreenState { scanning, loading, notFound }
+enum _ScreenState { scanning, loading, notFound, labelScan }
 
-class _BarcodeScanScreenState extends State<BarcodeScanScreen> {
+class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
   late final MobileScannerController _scanner;
   var _ui = _ScreenState.scanning;
   // Prevents re-entry while an API call or sheet is in flight.
@@ -61,22 +62,81 @@ class _BarcodeScanScreenState extends State<BarcodeScanScreen> {
     if (!mounted) return;
     setState(() => _ui = _ScreenState.loading);
 
-    final item = await _fetchProduct(raw);
+    final result =
+        await ref.read(productIdentificationProvider).identifyByBarcode(raw);
     if (!mounted) return;
 
-    if (item == null) {
+    if (!result.resolved) {
+      // Stay on notFound so the user can try the label-scan fallback.
       setState(() => _ui = _ScreenState.notFound);
-      await Future.delayed(const Duration(seconds: 2));
-      if (!mounted) return;
-      await _resumeScanning();
       return;
     }
 
+    await _showProductSheet(result);
+  }
+
+  // ── Label scan (OCR fallback) ──────────────────────────────────────────────
+
+  Future<void> _onScanLabel() async {
+    HapticService.selection();
+    setState(() => _ui = _ScreenState.labelScan);
+
+    final xfile = await ImagePicker()
+        .pickImage(source: ImageSource.camera, imageQuality: 80);
+
+    if (!mounted) return;
+
+    if (xfile == null) {
+      setState(() => _ui = _ScreenState.notFound);
+      return;
+    }
+
+    final bytes = await xfile.readAsBytes();
+    final extraction = await OcrExtractionService.extractFromImage(bytes);
+    if (!mounted) return;
+
+    if (extraction == null || !extraction.hasUsableData) {
+      setState(() => _ui = _ScreenState.notFound);
+      return;
+    }
+
+    final service = ref.read(productIdentificationProvider);
+    ProductIdentificationResult result;
+
+    // If Gemini spotted a barcode in the photo, try that first.
+    if (extraction.barcode != null) {
+      result = await service.identifyByBarcode(extraction.barcode!);
+      if (result.resolved) {
+        if (!mounted) return;
+        await _showProductSheet(result);
+        return;
+      }
+    }
+
+    // Fall back to brand + name + size text matching.
+    result = await service.identifyByText(
+      extraction.productName ?? '',
+      brand: extraction.brand,
+      sizeMl: extraction.sizeMl,
+    );
+    if (!mounted) return;
+
+    if (!result.resolved) {
+      setState(() => _ui = _ScreenState.notFound);
+      return;
+    }
+
+    await _showProductSheet(result);
+  }
+
+  // ── Product sheet ──────────────────────────────────────────────────────────
+
+  Future<void> _showProductSheet(ProductIdentificationResult result) async {
     final logged = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _ProductSheet(item: item),
+      builder: (_) => _ProductSheet(result: result),
     );
 
     if (!mounted) return;
@@ -93,7 +153,7 @@ class _BarcodeScanScreenState extends State<BarcodeScanScreen> {
     if (mounted) setState(() => _ui = _ScreenState.scanning);
   }
 
-  // ── Build ─────────────────────────────────────────────────────────────────
+  // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -136,7 +196,7 @@ class _BarcodeScanScreenState extends State<BarcodeScanScreen> {
             ),
           ),
 
-          // Status label / spinner
+          // Status label / spinner / action buttons
           Positioned(
             bottom: botPad + 48,
             left: 24,
@@ -179,101 +239,64 @@ class _BarcodeScanScreenState extends State<BarcodeScanScreen> {
             ),
           ],
         ),
-      _ScreenState.notFound => Text(
-          'Product not found — try again',
+      _ScreenState.notFound => Column(
           key: const ValueKey('notFound'),
-          style: AppTextStyles.bodyMedium
-              .copyWith(color: AppColors.danger, fontWeight: FontWeight.w600),
-          textAlign: TextAlign.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Product not found',
+              style: AppTextStyles.bodyMedium.copyWith(
+                  color: AppColors.danger, fontWeight: FontWeight.w600),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _OutlineButton(
+                  icon: Icons.document_scanner_rounded,
+                  label: 'Scan label',
+                  onTap: _onScanLabel,
+                ),
+                const SizedBox(width: 12),
+                _OutlineButton(
+                  icon: Icons.refresh_rounded,
+                  label: 'Try again',
+                  onTap: _resumeScanning,
+                ),
+              ],
+            ),
+          ],
+        ),
+      _ScreenState.labelScan => const Column(
+          key: ValueKey('labelScan'),
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(
+                  color: AppColors.accent, strokeWidth: 2),
+            ),
+            SizedBox(height: 10),
+            Text(
+              'Reading label…',
+              style: TextStyle(
+                  color: Colors.white60,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w400),
+            ),
+          ],
         ),
     };
   }
 }
 
-// ─── Open Food Facts lookup ───────────────────────────────────────────────────
-
-/// Calls the Open Food Facts v2 API and parses the product into a [FoodItem].
-/// Returns null if the barcode is not found or has no calorie data.
-Future<FoodItem?> _fetchProduct(String barcode) async {
-  try {
-    final uri = Uri.parse(
-      'https://world.openfoodfacts.org/api/v2/product/$barcode.json'
-      '?fields=product_name,brands,nutriments,serving_quantity,serving_size',
-    );
-    final response =
-        await http.get(uri).timeout(const Duration(seconds: 10));
-    if (response.statusCode != 200) return null;
-
-    final body = json.decode(response.body) as Map<String, dynamic>;
-    if (body['status'] != 1) return null;
-
-    final product = body['product'] as Map<String, dynamic>? ?? {};
-    return _parseProduct(product);
-  } catch (_) {
-    return null;
-  }
-}
-
-FoodItem? _parseProduct(Map<String, dynamic> p) {
-  final name = (p['product_name'] as String?)?.trim() ?? '';
-  if (name.isEmpty) return null;
-
-  final brands = (p['brands'] as String? ?? '').trim();
-  final displayName = brands.isNotEmpty ? '$name · $brands' : name;
-
-  final n = p['nutriments'] as Map<String, dynamic>? ?? {};
-
-  // Prefer per-serving, fall back to per-100g
-  final kcalServing = (n['energy-kcal_serving'] as num?)?.toInt();
-  final kcalPer100 = (n['energy-kcal_100g'] as num?)?.toInt()
-      ?? (n['energy-kcal'] as num?)?.toInt();
-  final servingQty = (p['serving_quantity'] as num?)?.toDouble() ?? 100.0;
-
-  late final int kcal;
-  late final String portionUnit;
-  late final double portionSize;
-
-  if (kcalServing != null && kcalServing > 0) {
-    kcal = kcalServing;
-    portionUnit = 'serving';
-    portionSize = 1.0;
-  } else if (kcalPer100 != null && kcalPer100 > 0) {
-    kcal = ((kcalPer100 * servingQty) / 100).round();
-    portionUnit = 'g';
-    portionSize = servingQty;
-  } else {
-    return null;
-  }
-
-  if (kcal <= 0) return null;
-
-  double? nutrient(String key) {
-    final serving = (n['${key}_serving'] as num?)?.toDouble();
-    if (serving != null && serving >= 0) return serving;
-    final per100 = (n['${key}_100g'] as num?)?.toDouble();
-    if (per100 != null && per100 >= 0) {
-      return per100 * servingQty / 100;
-    }
-    return null;
-  }
-
-  return FoodItem(
-    name: displayName,
-    portionSize: portionSize,
-    portionUnit: portionUnit,
-    calories: kcal,
-    protein: nutrient('proteins'),
-    carbs: nutrient('carbohydrates'),
-    fat: nutrient('fat'),
-    confidenceScore: 1.0,
-  );
-}
-
 // ─── Product confirmation sheet ───────────────────────────────────────────────
 
 class _ProductSheet extends ConsumerStatefulWidget {
-  final FoodItem item;
-  const _ProductSheet({required this.item});
+  final ProductIdentificationResult result;
+  const _ProductSheet({required this.result});
 
   @override
   ConsumerState<_ProductSheet> createState() => _ProductSheetState();
@@ -283,7 +306,9 @@ class _ProductSheetState extends ConsumerState<_ProductSheet> {
   double _multiplier = 1.0;
   bool _saving = false;
 
-  int get _kcal => (widget.item.calories * _multiplier).round();
+  FoodItem get _item => widget.result.item!;
+
+  int get _kcal => (_item.calories * _multiplier).round();
 
   double? _scale(double? v) => v != null ? v * _multiplier : null;
 
@@ -291,13 +316,13 @@ class _ProductSheetState extends ConsumerState<_ProductSheet> {
     setState(() => _saving = true);
 
     final scaled = FoodItem(
-      name: widget.item.name,
-      portionSize: widget.item.portionSize * _multiplier,
-      portionUnit: widget.item.portionUnit,
+      name: _item.name,
+      portionSize: _item.portionSize * _multiplier,
+      portionUnit: _item.portionUnit,
       calories: _kcal,
-      protein: _scale(widget.item.protein),
-      carbs: _scale(widget.item.carbs),
-      fat: _scale(widget.item.fat),
+      protein: _scale(_item.protein),
+      carbs: _scale(_item.carbs),
+      fat: _scale(_item.fat),
       confidenceScore: 1.0,
     );
 
@@ -324,15 +349,21 @@ class _ProductSheetState extends ConsumerState<_ProductSheet> {
 
           // Product name + portion
           Text(
-            widget.item.name,
+            _item.name,
             style: AppTextStyles.titleMedium,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 4),
-          Text(widget.item.portionLabel,
+          Text(_item.portionLabel,
               style: AppTextStyles.caption
                   .copyWith(color: AppColors.textSecondary)),
+
+          // Fallback source badge — only shown when not an exact OFF match
+          if (widget.result.matchSource != MatchSource.offExact) ...[
+            const SizedBox(height: 6),
+            _SourceBadge(source: widget.result.matchSource),
+          ],
 
           const SizedBox(height: 20),
 
@@ -352,31 +383,31 @@ class _ProductSheetState extends ConsumerState<_ProductSheet> {
           ),
 
           // Macro chips
-          if (widget.item.protein != null ||
-              widget.item.carbs != null ||
-              widget.item.fat != null) ...[
+          if (_item.protein != null ||
+              _item.carbs != null ||
+              _item.fat != null) ...[
             const SizedBox(height: 10),
             Row(
               children: [
-                if (widget.item.protein != null)
+                if (_item.protein != null)
                   _MacroTag(
                     label: 'P',
-                    value: _scale(widget.item.protein)!,
+                    value: _scale(_item.protein)!,
                     color: const Color(0xFF4ECDC4),
                   ),
-                if (widget.item.carbs != null) ...[
+                if (_item.carbs != null) ...[
                   const SizedBox(width: 8),
                   _MacroTag(
                     label: 'C',
-                    value: _scale(widget.item.carbs)!,
+                    value: _scale(_item.carbs)!,
                     color: const Color(0xFFFFD166),
                   ),
                 ],
-                if (widget.item.fat != null) ...[
+                if (_item.fat != null) ...[
                   const SizedBox(width: 8),
                   _MacroTag(
                     label: 'F',
-                    value: _scale(widget.item.fat)!,
+                    value: _scale(_item.fat)!,
                     color: const Color(0xFFFF6B6B),
                   ),
                 ],
@@ -426,10 +457,12 @@ class _ProductSheetState extends ConsumerState<_ProductSheet> {
           const SizedBox(height: 24),
 
           ElevatedButton(
-            onPressed: _saving ? null : () {
-              HapticService.heavy();
-              _log();
-            },
+            onPressed: _saving
+                ? null
+                : () {
+                    HapticService.heavy();
+                    _log();
+                  },
             child: _saving
                 ? const SizedBox(
                     width: 18,
@@ -440,6 +473,36 @@ class _ProductSheetState extends ConsumerState<_ProductSheet> {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ─── Source badge ─────────────────────────────────────────────────────────────
+
+class _SourceBadge extends StatelessWidget {
+  final MatchSource source;
+  const _SourceBadge({required this.source});
+
+  @override
+  Widget build(BuildContext context) {
+    final label = switch (source) {
+      MatchSource.offNormalized => 'Matched via barcode variant',
+      MatchSource.localBarcode => 'Matched from product database',
+      MatchSource.localAlias => 'Matched via product alias',
+      MatchSource.ocrMatch => 'Matched via label scan',
+      _ => null,
+    };
+    if (label == null) return const SizedBox.shrink();
+
+    return Row(
+      children: [
+        Icon(Icons.info_outline_rounded,
+            size: 12, color: AppColors.textSecondary),
+        const SizedBox(width: 4),
+        Text(label,
+            style: AppTextStyles.caption
+                .copyWith(color: AppColors.textSecondary)),
+      ],
     );
   }
 }
@@ -487,6 +550,40 @@ class _CircleButton extends StatelessWidget {
           shape: BoxShape.circle,
         ),
         child: Icon(icon, color: Colors.white, size: 22),
+      ),
+    );
+  }
+}
+
+class _OutlineButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  const _OutlineButton(
+      {required this.icon, required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.white24),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: Colors.white70, size: 16),
+            const SizedBox(width: 6),
+            Text(label,
+                style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500)),
+          ],
+        ),
       ),
     );
   }
