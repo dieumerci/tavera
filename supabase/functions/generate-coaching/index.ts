@@ -149,7 +149,7 @@ ${summaryText || "(no logs this week)"}
 
     const rawContent = await _callGemini(
       geminiKey,
-      "gemini-2.0-flash",
+      "gemini-2.0-flash-001",
       INSIGHT_PROMPT + "\n\n" + contextText,
       { temperature: 0.7, maxOutputTokens: 600 }
     );
