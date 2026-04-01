@@ -48,33 +48,42 @@ Rules:
 - Do not invent items you cannot see`;
 
 // ─── Gemini helper ────────────────────────────────────────────────────────────
-// Sends a multimodal request (text + optional inlineData image) to Gemini and
-// returns the raw text response. Caller is responsible for JSON parsing.
+// Sends a multimodal request (text + optional inlineData image) to Gemini.
+// Retries up to 3 times on 429 (rate limit) with exponential backoff.
 async function callGemini(
   apiKey: string,
   parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }>,
   config: { temperature: number; maxOutputTokens: number }
 ): Promise<string> {
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts }],
-        generationConfig: config,
-      }),
-    }
-  );
+  const body = JSON.stringify({
+    contents: [{ parts }],
+    generationConfig: config,
+  });
 
-  if (!res.ok) {
-    throw new Error(`Gemini API error (${res.status}): ${await res.text()}`);
+  const maxAttempts = 3;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body }
+    );
+
+    // 429 = rate limit — back off and retry.
+    if (res.status === 429 && attempt < maxAttempts - 1) {
+      await new Promise((r) => setTimeout(r, (attempt + 1) * 2000));
+      continue;
+    }
+
+    if (!res.ok) {
+      throw new Error(`Gemini API error (${res.status}): ${await res.text()}`);
+    }
+
+    const json = await res.json();
+    const text: string = json.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+    if (!text) throw new Error("Empty response from Gemini");
+    return text;
   }
 
-  const json = await res.json();
-  const text: string = json.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-  if (!text) throw new Error("Empty response from Gemini");
-  return text;
+  throw new Error("Gemini rate limit: all retries exhausted");
 }
 
 // ─── Base64 image encoder ─────────────────────────────────────────────────────
