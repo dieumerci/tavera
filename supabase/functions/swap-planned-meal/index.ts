@@ -126,7 +126,7 @@ Already in the plan this week (do not repeat): ${existingMealNames.slice(0, 30).
     // ── 4. Call Gemini ───────────────────────────────────────────────────────
     const rawContent = await _callGemini(
       geminiKey,
-      "gemini-2.0-flash-001",
+      "gemini-1.5-flash-002",
       SWAP_PROMPT + "\n\n" + userContext,
       { temperature: 0.8, maxOutputTokens: 800 }
     );
