@@ -182,7 +182,7 @@ Week of: ${week_start}
     // ── 4. Call Gemini ───────────────────────────────────────────────────────
     const rawContent = await _callGemini(
       geminiKey,
-      "gemini-1.5-flash-002",
+      "gemini-2.0-flash-002",
       MEAL_PLAN_PROMPT + "\n\n" + GROCERY_PROMPT + "\n\n" + userContext,
       { temperature: 0.5, maxOutputTokens: 3000 }
     );
@@ -298,7 +298,7 @@ Already used in other days of the week (do not repeat): ${otherMealNames.slice(0
 
   const rawContent = await _callGemini(
     geminiKey,
-    "gemini-1.5-flash-002",
+    "gemini-2.0-flash-002",
     SINGLE_DAY_PROMPT + "\n\n" + userContext,
     { temperature: 0.7, maxOutputTokens: 800 }
   );
