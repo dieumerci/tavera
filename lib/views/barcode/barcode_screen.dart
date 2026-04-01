@@ -55,6 +55,12 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
     final raw = capture.barcodes.firstOrNull?.rawValue;
     if (raw == null || raw.isEmpty) return;
 
+    // Reject partial/corrupt reads before triggering a lookup.
+    // Product barcodes are at minimum 8 digits (EAN-8) and at most 14 (ITF-14).
+    // Fragments shorter than 8 digits are scanner noise — ignore silently.
+    final digits = raw.replaceAll(RegExp(r'\D'), '');
+    if (digits.length < 8 || digits.length > 14) return;
+
     _handled = true;
     HapticService.medium();
     AnalyticsService.track('barcode_scanned');
