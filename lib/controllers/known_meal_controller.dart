@@ -138,26 +138,41 @@ class KnownMealController extends AsyncNotifier<List<KnownMeal>> {
   Future<void> rename(String id, String newName) async {
     final trimmed = newName.trim();
     if (trimmed.isEmpty) return;
-    final client = Supabase.instance.client;
-    await client
-        .from('known_meals')
-        .update({'name': trimmed})
-        .eq('id', id);
+
+    // Optimistic update — roll back to previous state on failure.
+    final previous = state.valueOrNull ?? [];
     state = AsyncValue.data(
-      (state.valueOrNull ?? [])
-          .map((m) => m.id == id ? m.copyWithName(trimmed) : m)
-          .toList(),
+      previous.map((m) => m.id == id ? m.copyWithName(trimmed) : m).toList(),
     );
+
+    try {
+      await Supabase.instance.client
+          .from('known_meals')
+          .update({'name': trimmed})
+          .eq('id', id);
+    } catch (_) {
+      // Rollback to the pre-rename state.
+      state = AsyncValue.data(previous);
+      rethrow;
+    }
   }
 
   // ── Delete a known meal ───────────────────────────────────────────────────
 
   Future<void> delete(String id) async {
-    final client = Supabase.instance.client;
-    await client.from('known_meals').delete().eq('id', id);
-    state = AsyncValue.data(
-      (state.valueOrNull ?? []).where((m) => m.id != id).toList(),
-    );
+    // Optimistic update — roll back on failure.
+    final previous = state.valueOrNull ?? [];
+    state = AsyncValue.data(previous.where((m) => m.id != id).toList());
+
+    try {
+      await Supabase.instance.client
+          .from('known_meals')
+          .delete()
+          .eq('id', id);
+    } catch (_) {
+      state = AsyncValue.data(previous);
+      rethrow;
+    }
   }
 
   // ── Fingerprint helpers ───────────────────────────────────────────────────

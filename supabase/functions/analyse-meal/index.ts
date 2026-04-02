@@ -28,6 +28,7 @@ JSON structure:
       "calories": number (integer),
       "protein": number (grams, 1dp),
       "carbs": number (grams, 1dp),
+      "fiber": number (grams, 1dp),
       "fat": number (grams, 1dp),
       "fiber_g": number (grams, 1dp — dietary fibre only),
       "confidence": number (0.0–1.0, your certainty about identification)

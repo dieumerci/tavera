@@ -27,6 +27,18 @@ class MealLog {
     this.totalFiber,
   });
 
+  /// Net carbs = carbs − fiber, floored at 0 per item.
+  /// For items without fiber data (older logs), fiber defaults to 0 so
+  /// net carbs equals gross carbs — preserving backward compatibility.
+  double get totalNetCarbs => items.fold(
+        0.0,
+        (sum, item) => sum +
+            ((item.carbs ?? 0) - (item.fiber ?? 0)).clamp(
+              0.0,
+              double.infinity,
+            ),
+      );
+
   factory MealLog.fromMap(Map<String, dynamic> map) => MealLog(
         id: map['id'] as String,
         userId: map['user_id'] as String,

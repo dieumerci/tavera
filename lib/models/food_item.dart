@@ -5,6 +5,7 @@ class FoodItem {
   final int calories;
   final double? protein;
   final double? carbs;
+  final double? fiber;
   final double? fat;
   /// Dietary fibre in grams. Used to compute net carbs (carbs − fiber)
   /// when the user enables Net Carbs Mode in Profile → Goals.
@@ -18,6 +19,7 @@ class FoodItem {
     required this.calories,
     this.protein,
     this.carbs,
+    this.fiber,
     this.fat,
     this.fiber,
     this.confidenceScore = 1.0,
@@ -30,6 +32,7 @@ class FoodItem {
         calories: (map['calories'] as num).toInt(),
         protein: (map['protein'] as num?)?.toDouble(),
         carbs: (map['carbs'] as num?)?.toDouble(),
+        fiber: (map['fiber'] as num?)?.toDouble(),
         fat: (map['fat'] as num?)?.toDouble(),
         fiber: (map['fiber_g'] as num?)?.toDouble(),
         confidenceScore: (map['confidence'] as num?)?.toDouble() ?? 1.0,
@@ -42,6 +45,7 @@ class FoodItem {
         'calories': calories,
         'protein': protein,
         'carbs': carbs,
+        'fiber': fiber,
         'fat': fat,
         'fiber_g': fiber,
         'confidence': confidenceScore,
@@ -63,6 +67,7 @@ class FoodItem {
     int? calories,
     double? protein,
     double? carbs,
+    double? fiber,
     double? fat,
     double? fiber,
   }) =>
@@ -73,6 +78,7 @@ class FoodItem {
         calories: calories ?? this.calories,
         protein: protein ?? this.protein,
         carbs: carbs ?? this.carbs,
+        fiber: fiber ?? this.fiber,
         fat: fat ?? this.fat,
         fiber: fiber ?? this.fiber,
         confidenceScore: confidenceScore,

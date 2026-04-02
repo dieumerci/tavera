@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../controllers/auth_controller.dart';
+import '../../core/config/app_config.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../models/user_profile.dart';
@@ -41,9 +42,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   int _heightCm    = 170;
 
   // Calorie goal (step 3) — pre-populated from BMR when body stats are entered
-  int _calorieGoal = 2000;
+  int _calorieGoal = AppConfig.defaultCalorieGoal;
 
-  static const _goalPresets = [1500, 1800, 2000, 2500, 3000];
+  static const _goalPresets = AppConfig.caloriePresets;
 
   @override
   void dispose() {

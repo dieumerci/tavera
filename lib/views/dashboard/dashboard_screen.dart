@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../controllers/auth_controller.dart';
+import '../../core/config/app_config.dart';
 import '../../controllers/challenge_controller.dart';
 import '../../controllers/coaching_controller.dart';
 import '../../controllers/fasting_controller.dart';
@@ -131,6 +132,7 @@ class DashboardScreen extends ConsumerWidget {
                   carbLabel: carbLabel,
                   fat: log?.totalFat ?? 0,
                   fatGoal: _macroGoal(calorieGoal, 'fat'),
+                  netCarbsMode: netCarbsMode,
                 ),
               ),
             ),
@@ -185,6 +187,8 @@ class DashboardScreen extends ConsumerWidget {
                 ),
               ),
             ),
+
+            const SliverToBoxAdapter(child: SizedBox(height: 16)),
 
             // ── Weekly calorie trend ────────────────────────────────────────
             if (weeklyCalories != null && weeklyCalories.any((v) => v > 0)) ...[
@@ -407,7 +411,7 @@ class _WeeklyTrendCard extends StatelessWidget {
               children: List.generate(7, (i) {
                 final kcal = calories[i];
                 final frac = goal > 0
-                    ? (kcal / goal).clamp(0.0, 1.5)
+                    ? (kcal / goal).clamp(0.0, 1.0)
                     : 0.0;
                 final isToday = i == 6;
                 final Color barColor = kcal == 0
@@ -501,6 +505,7 @@ class _CalorieRingCard extends StatelessWidget {
   final String carbLabel;
   final double fat;
   final double fatGoal;
+  final bool netCarbsMode;
 
   const _CalorieRingCard({
     required this.consumed,
@@ -512,6 +517,7 @@ class _CalorieRingCard extends StatelessWidget {
     this.carbLabel = 'Carbs',
     required this.fat,
     required this.fatGoal,
+    this.netCarbsMode = false,
   });
 
   @override
@@ -792,7 +798,7 @@ class _WaterCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const goalMl = 2000;
+    const goalMl = AppConfig.defaultWaterGoalMl;
     final progress = (waterMl / goalMl).clamp(0.0, 1.0);
     final glasses = (waterMl / 250).round();
     const goalGlasses = goalMl ~/ 250;
@@ -1022,8 +1028,19 @@ class _KnownMealChip extends ConsumerWidget {
     return GestureDetector(
       onTap: () async {
         HapticService.heavy();
-        await ref.read(knownMealControllerProvider.notifier).relog(meal, ref);
-        ref.invalidate(logControllerProvider);
+        final logId = await ref
+            .read(knownMealControllerProvider.notifier)
+            .relog(meal, ref);
+        if (logId != null) {
+          ref.invalidate(logControllerProvider);
+        } else if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Could not log meal. Check your connection and try again.'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
       },
       onLongPress: () {
         HapticService.medium();
@@ -1120,35 +1137,51 @@ class _KnownMealActionSheet extends StatelessWidget {
               HapticService.selection();
               Navigator.of(context).pop();
               final ctrl = TextEditingController(text: meal.name as String);
-              final newName = await showDialog<String>(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  backgroundColor: AppColors.surface,
-                  title: Text('Rename meal',
-                      style: AppTextStyles.titleMedium),
-                  content: TextField(
-                    controller: ctrl,
-                    autofocus: true,
-                    style: AppTextStyles.bodyLarge,
-                    decoration: const InputDecoration(hintText: 'Meal name'),
+              String? newName;
+              try {
+                newName = await showDialog<String>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    backgroundColor: AppColors.surface,
+                    title: Text('Rename meal',
+                        style: AppTextStyles.titleMedium),
+                    content: TextField(
+                      controller: ctrl,
+                      autofocus: true,
+                      style: AppTextStyles.bodyLarge,
+                      decoration: const InputDecoration(hintText: 'Meal name'),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(ctx).pop(),
+                        child: const Text('Cancel'),
+                      ),
+                      TextButton(
+                        onPressed: () =>
+                            Navigator.of(ctx).pop(ctrl.text),
+                        child: const Text('Save'),
+                      ),
+                    ],
                   ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(ctx).pop(),
-                      child: const Text('Cancel'),
-                    ),
-                    TextButton(
-                      onPressed: () =>
-                          Navigator.of(ctx).pop(ctrl.text),
-                      child: const Text('Save'),
-                    ),
-                  ],
-                ),
-              );
+                );
+              } finally {
+                ctrl.dispose();
+              }
               if (newName != null && newName.trim().isNotEmpty) {
-                await ref
-                    .read(knownMealControllerProvider.notifier)
-                    .rename(meal.id as String, newName);
+                try {
+                  await ref
+                      .read(knownMealControllerProvider.notifier)
+                      .rename(meal.id as String, newName);
+                } catch (_) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Failed to rename meal. Please try again.'),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                }
               }
             },
           ),
@@ -1164,9 +1197,20 @@ class _KnownMealActionSheet extends StatelessWidget {
             onTap: () async {
               HapticService.medium();
               Navigator.of(context).pop();
-              await ref
-                  .read(knownMealControllerProvider.notifier)
-                  .delete(meal.id as String);
+              try {
+                await ref
+                    .read(knownMealControllerProvider.notifier)
+                    .delete(meal.id as String);
+              } catch (_) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Failed to remove meal. Please try again.'),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              }
             },
           ),
           ListTile(

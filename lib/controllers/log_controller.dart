@@ -32,6 +32,9 @@ class DailyLogState {
 
   int get logCount => todayLogs.length;
 
+  double get totalNetCarbs =>
+      todayLogs.fold(0.0, (s, l) => s + l.totalNetCarbs);
+
   DailyLogState copyWith({
     List<MealLog>? todayLogs,
     int? totalCalories,

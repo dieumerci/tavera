@@ -104,7 +104,7 @@ class _ChallengesScreenState extends ConsumerState<ChallengesScreen>
           ),
         ],
       ),
-    );
+    ).whenComplete(codeCtrl.dispose);
   }
 
   void _showUpgradeDialog() {
