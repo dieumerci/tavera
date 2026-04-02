@@ -48,6 +48,7 @@ interface MealLogSummary {
   totalCalories: number;
   totalProtein: number | null;
   totalCarbs: number | null;
+  totalFiber: number | null;
   totalFat: number | null;
   mealCount: number;
 }
@@ -78,7 +79,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: logs, error: logsError } = await supabase
       .from("meal_logs")
-      .select("logged_at, total_calories, total_protein, total_carbs, total_fat")
+      .select("logged_at, total_calories, total_protein, total_carbs, total_fat, total_fiber")
       .eq("user_id", user_id)
       .gte("logged_at", week_start)
       .lte("logged_at", weekEnd.toISOString().split("T")[0] + "T23:59:59Z")
@@ -86,15 +87,16 @@ Deno.serve(async (req: Request) => {
 
     if (logsError) throw new Error(logsError.message);
 
-    // ── 2. Fetch user's calorie goal ─────────────────────────────────────────
+    // ── 2. Fetch user's calorie goal and preferences ─────────────────────────
     const { data: profile } = await supabase
       .from("profiles")
-      .select("calorie_goal, name")
+      .select("calorie_goal, name, net_carbs_mode")
       .eq("id", user_id)
       .single();
 
     const calorieGoal = profile?.calorie_goal ?? 2000;
     const userName = profile?.name ?? "there";
+    const netCarbsMode = profile?.net_carbs_mode ?? false;
 
     // ── 3. Build daily summary ───────────────────────────────────────────────
     const dailyMap = new Map<string, MealLogSummary>();
@@ -106,6 +108,7 @@ Deno.serve(async (req: Request) => {
         existing.mealCount += 1;
         if (log.total_protein) existing.totalProtein = (existing.totalProtein ?? 0) + log.total_protein;
         if (log.total_carbs) existing.totalCarbs = (existing.totalCarbs ?? 0) + log.total_carbs;
+        if (log.total_fiber) existing.totalFiber = (existing.totalFiber ?? 0) + log.total_fiber;
         if (log.total_fat) existing.totalFat = (existing.totalFat ?? 0) + log.total_fat;
       } else {
         dailyMap.set(date, {
@@ -113,6 +116,7 @@ Deno.serve(async (req: Request) => {
           totalCalories: log.total_calories,
           totalProtein: log.total_protein,
           totalCarbs: log.total_carbs,
+          totalFiber: log.total_fiber ?? null,
           totalFat: log.total_fat,
           mealCount: 1,
         });
@@ -126,14 +130,19 @@ Deno.serve(async (req: Request) => {
       : 0;
 
     // ── 4. Compose the prompt context ────────────────────────────────────────
-    const summaryText = dailySummaries.map((d) =>
-      `${d.date}: ${d.totalCalories} kcal, P:${d.totalProtein?.toFixed(0) ?? "?"}g C:${d.totalCarbs?.toFixed(0) ?? "?"}g F:${d.totalFat?.toFixed(0) ?? "?"}g (${d.mealCount} meals)`
-    ).join("\n");
+    const carbLabel = netCarbsMode ? "Net C" : "C";
+    const summaryText = dailySummaries.map((d) => {
+      const carbValue = netCarbsMode
+        ? Math.max(0, (d.totalCarbs ?? 0) - (d.totalFiber ?? 0))
+        : (d.totalCarbs ?? null);
+      return `${d.date}: ${d.totalCalories} kcal, P:${d.totalProtein?.toFixed(0) ?? "?"}g ${carbLabel}:${carbValue?.toFixed(0) ?? "?"}g F:${d.totalFat?.toFixed(0) ?? "?"}g (${d.mealCount} meals)`;
+    }).join("\n");
 
     const contextText = `
 User: ${userName}
 Week of: ${week_start}
 Calorie goal: ${calorieGoal} kcal/day
+Carb display: ${netCarbsMode ? "net carbs (total carbs minus dietary fibre)" : "total carbs"}
 Days with logs: ${daysLogged}/7
 Average daily calories: ${avgCalories} kcal
 

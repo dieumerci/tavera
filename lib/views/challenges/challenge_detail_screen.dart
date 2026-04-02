@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -157,17 +159,128 @@ class _ChallengeContent extends ConsumerWidget {
   }
 }
 
+// ─── Confetti particle model ──────────────────────────────────────────────────
+
+class _Particle {
+  double x; // 0.0–1.0 relative to widget width
+  double y; // 0.0–1.0 relative to widget height
+  double vx;
+  double vy;
+  double angle;
+  double spin;
+  Color color;
+  double size;
+
+  _Particle({
+    required this.x,
+    required this.y,
+    required this.vx,
+    required this.vy,
+    required this.angle,
+    required this.spin,
+    required this.color,
+    required this.size,
+  });
+}
+
+// ─── Confetti painter ─────────────────────────────────────────────────────────
+
+class _ConfettiPainter extends CustomPainter {
+  final List<_Particle> particles;
+  final double opacity;
+
+  _ConfettiPainter(this.particles, this.opacity);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (final p in particles) {
+      final paint = Paint()
+        ..color = p.color.withValues(alpha: opacity)
+        ..style = PaintingStyle.fill;
+
+      canvas.save();
+      canvas.translate(p.x * size.width, p.y * size.height);
+      canvas.rotate(p.angle);
+      canvas.drawRect(
+        Rect.fromCenter(center: Offset.zero, width: p.size, height: p.size * 0.5),
+        paint,
+      );
+      canvas.restore();
+    }
+  }
+
+  @override
+  bool shouldRepaint(_ConfettiPainter old) => true;
+}
+
 // ─── Completion banner ────────────────────────────────────────────────────────
 //
-// Slides in from the top with a scale + fade animation when first rendered.
-// Shows the user's final rank and score, plus a "Share results" button that
-// invokes the native iOS/Android share sheet with a pre-formatted text card.
+// Slides in with a scale + fade animation. Confetti particles rain down for
+// 2.5 seconds then fade out. Shows the user's final rank and score, plus a
+// "Share results" button that invokes the native iOS/Android share sheet.
 
-class _CompletionBanner extends StatelessWidget {
+class _CompletionBanner extends StatefulWidget {
   final Challenge challenge;
   final ChallengeParticipant participant;
   const _CompletionBanner(
       {required this.challenge, required this.participant});
+
+  @override
+  State<_CompletionBanner> createState() => _CompletionBannerState();
+}
+
+class _CompletionBannerState extends State<_CompletionBanner>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _confettiCtrl;
+  late final List<_Particle> _particles;
+  final _rng = math.Random();
+
+  static const _colors = [
+    Color(0xFFFFD700), // gold
+    Color(0xFFCCFF90), // accent lime
+    Color(0xFFFF6B6B), // coral
+    Color(0xFF64B5F6), // blue
+    Color(0xFFFF80AB), // pink
+    Color(0xFFB388FF), // purple
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _particles = List.generate(60, (_) => _Particle(
+      x: _rng.nextDouble(),
+      y: -0.1 - _rng.nextDouble() * 0.4, // start above the banner
+      vx: (_rng.nextDouble() - 0.5) * 0.008,
+      vy: 0.004 + _rng.nextDouble() * 0.006,
+      angle: _rng.nextDouble() * math.pi * 2,
+      spin: (_rng.nextDouble() - 0.5) * 0.15,
+      color: _colors[_rng.nextInt(_colors.length)],
+      size: 6 + _rng.nextDouble() * 6,
+    ));
+
+    _confettiCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2500),
+    )..addListener(() {
+        setState(() {
+          for (final p in _particles) {
+            p.x += p.vx;
+            p.y += p.vy;
+            p.angle += p.spin;
+            // wrap horizontally
+            if (p.x < 0) p.x += 1.0;
+            if (p.x > 1) p.x -= 1.0;
+          }
+        });
+      })
+      ..forward();
+  }
+
+  @override
+  void dispose() {
+    _confettiCtrl.dispose();
+    super.dispose();
+  }
 
   String _buildShareText() {
     final rank = participant.rank > 0 ? '#${participant.rank}' : 'a participant';
@@ -198,6 +311,9 @@ Track your nutrition with Tavera — AI-powered calorie tracking 📱
 
   @override
   Widget build(BuildContext context) {
+    final confettiOpacity =
+        (1.0 - _confettiCtrl.value).clamp(0.0, 1.0);
+
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.0, end: 1.0),
       duration: const Duration(milliseconds: 600),
@@ -206,97 +322,116 @@ Track your nutrition with Tavera — AI-powered calorie tracking 📱
         scale: value,
         child: Opacity(opacity: value.clamp(0.0, 1.0), child: child),
       ),
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              const Color(0xFFFFD700).withValues(alpha: 0.15),
-              AppColors.accent.withValues(alpha: 0.1),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: const Color(0xFFFFD700).withValues(alpha: 0.4),
-          ),
-        ),
-        child: Column(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Stack(
           children: [
-            // Trophy row
-            Row(
-              children: [
-                const Text('🏆', style: TextStyle(fontSize: 36)),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            // ── Banner content ───────────────────────────────────────────
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    const Color(0xFFFFD700).withValues(alpha: 0.15),
+                    AppColors.accent.withValues(alpha: 0.1),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: const Color(0xFFFFD700).withValues(alpha: 0.4),
+                ),
+              ),
+              child: Column(
+                children: [
+                  // Trophy row
+                  Row(
                     children: [
-                      Text(
-                        'Challenge Complete!',
-                        style: AppTextStyles.titleMedium.copyWith(
-                          color: const Color(0xFFFFD700),
+                      const Text('🏆', style: TextStyle(fontSize: 36)),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Challenge Complete!',
+                              style: AppTextStyles.titleMedium.copyWith(
+                                color: const Color(0xFFFFD700),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              widget.challenge.title,
+                              style: AppTextStyles.caption.copyWith(
+                                color: AppColors.textSecondary,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
                         ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        challenge.title,
-                        style: AppTextStyles.caption.copyWith(
-                          color: AppColors.textSecondary,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            // Stats row
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _StatBadge(
-                  label: 'Final rank',
-                  value: _rankLabel(participant.rank),
-                ),
-                _StatBadge(
-                  label: 'Score',
-                  value: '${participant.score.toStringAsFixed(0)} pts',
-                ),
-                if (participant.streakDays > 0)
-                  _StatBadge(
-                    label: 'Best streak',
-                    value: '${participant.streakDays}d 🔥',
+                  const SizedBox(height: 16),
+                  // Stats row
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _StatBadge(
+                        label: 'Final rank',
+                        value: _rankLabel(widget.participant.rank),
+                      ),
+                      _StatBadge(
+                        label: 'Score',
+                        value: '${widget.participant.score.toStringAsFixed(0)} pts',
+                      ),
+                      if (widget.participant.streakDays > 0)
+                        _StatBadge(
+                          label: 'Best streak',
+                          value: '${widget.participant.streakDays}d 🔥',
+                        ),
+                    ],
                   ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            // Share button
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  HapticService.medium();
-                  Share.share(_buildShareText(),
-                      subject: 'I completed a Tavera challenge!');
-                },
-                icon: const Icon(Icons.share_rounded, size: 16),
-                label: const Text('Share my results'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFFFD700).withValues(alpha: 0.15),
-                  foregroundColor: const Color(0xFFFFD700),
-                  elevation: 0,
-                  side: BorderSide(
-                      color: const Color(0xFFFFD700).withValues(alpha: 0.4)),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
+                  const SizedBox(height: 16),
+                  // Share button
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        HapticService.medium();
+                        Share.share(_buildShareText(),
+                            subject: 'I completed a Tavera challenge!');
+                      },
+                      icon: const Icon(Icons.share_rounded, size: 16),
+                      label: const Text('Share my results'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor:
+                            const Color(0xFFFFD700).withValues(alpha: 0.15),
+                        foregroundColor: const Color(0xFFFFD700),
+                        elevation: 0,
+                        side: BorderSide(
+                            color: const Color(0xFFFFD700)
+                                .withValues(alpha: 0.4)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
+            // ── Confetti overlay (fades out after 2.5s) ─────────────────
+            if (_confettiCtrl.value < 1.0)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: CustomPaint(
+                    painter: _ConfettiPainter(_particles, confettiOpacity),
+                  ),
+                ),
+              ),
           ],
         ),
       ),

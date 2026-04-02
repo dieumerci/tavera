@@ -293,10 +293,10 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 - [ ] Notification suppression: respect the user's meal-time suppression windows
 
 #### Social sharing & infographics
-- [ ] Build auto-generated completion infographic: challenge name, user stats, rank, best day, streak
-- [ ] Implement share-to-social flow (iOS Share Sheet / Android Share Intent)
+- ✅ Build auto-generated completion infographic: challenge name, user stats, rank, best day, streak — `_buildShareText()` in `_CompletionBanner`
+- ✅ Implement share-to-social flow (iOS Share Sheet / Android Share Intent) — `Share.share()` via `share_plus`
 - ✅ Badge system: challenge badges shown on profile screen — `_ChallengeBadgesSection` with horizontal chip carousel using `completedChallengesProvider`
-- [ ] Implement achievement unlock notifications with celebratory animation
+- ✅ Implement achievement unlock with celebratory animation — 60-particle confetti `CustomPainter` overlaid on `_CompletionBanner`, fades out over 2.5s
 
 #### Phase 2 Social Challenges scope
 - ✅ Maximum 10 participants per challenge — `Challenge.maxParticipants` constant; client-side count check in `join()` before `_joinChallenge()`; Join button disabled + shows "Full" when at cap; capacity shown as "X/10" chip (red when full)
@@ -343,14 +343,14 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 - ✅ Show fasting card on Dashboard when a fast is active — live progress bar + HH:MM:SS countdown via `Timer.periodic` on the card's own `StatefulWidget`
 - ✅ Fasting history: last 14 completed sessions with completion badge, duration, and date
 - ✅ Fasting tile in Profile → Features section with "Active" badge when running
-- [ ] Smart calorie gate: suppress meal logging prompts during fasting window
+- ✅ Smart calorie gate: soft warning dialog (Cancel / End fast / Log anyway) gates all 4 log paths — `_checkFastingGate()` in `AddFoodSheet`
 - [ ] Gate behind premium (or free tier — evaluate at launch)
 
 #### Net Carbs Toggle _(Priority 4 — Low effort, Medium impact)_
 - ✅ Add `netCarbsMode` bool to `UserProfile` and persist to `profiles.net_carbs_mode` (migration 007)
 - ✅ Add toggle tile in Profile → Goals section (live-updates via Realtime stream)
 - ✅ Wherever carbs are displayed (dashboard, history, meal detail sheet), show `carbs − fiber` when mode is on — `fiber_g` per item from `analyse-meal` v3; `total_fiber` in `meal_logs` (migration 008); `_netCarbs()` helper in both screens; label switches to "Net Carbs"
-- [ ] Update coaching insights to use net carbs in prompt when mode is on
+- ✅ Update coaching insights to use net carbs in prompt when mode is on — `generate-coaching` fetches `net_carbs_mode` + `total_fiber`; computes net carbs per day; labels `C:` → `Net C:` in prompt context
 
 ### Analytics
 
