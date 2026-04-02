@@ -44,6 +44,8 @@ class DashboardScreen extends ConsumerWidget {
             ?.where((c) => c.isActive)
             .toList() ??
         [];
+    // Phase 3 — streak (optional: hidden when 0)
+    final streak = ref.watch(loggingStreakProvider).valueOrNull ?? 0;
 
     final log = logAsync.valueOrNull;
     final profile = profileAsync.valueOrNull;
@@ -204,6 +206,17 @@ class DashboardScreen extends ConsumerWidget {
               const SliverToBoxAdapter(child: SizedBox(height: 20)),
             ] else
               const SliverToBoxAdapter(child: SizedBox(height: 20)),
+
+            // ── Phase 3: Consistency streak ─────────────────────────────────
+            if (streak > 0) ...[
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: _StreakCard(streak: streak),
+                ),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 16)),
+            ],
 
             // ── Water intake ────────────────────────────────────────────────
             SliverToBoxAdapter(
@@ -884,6 +897,14 @@ class _MealRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final names = meal.items.map((i) => i.name).take(3).join(', ');
     final timeStr = _formatTime(meal.loggedAt);
+    final calorieGoal =
+        ref.watch(userProfileProvider).valueOrNull?.calorieGoal ?? 2000;
+    final score = meal.score(calorieGoal: calorieGoal);
+    final scoreColor = switch (score) {
+      MealScore.green => AppColors.success,
+      MealScore.yellow => const Color(0xFFFFD166),
+      MealScore.red => AppColors.danger,
+    };
 
     return GestureDetector(
       onTap: () {
@@ -904,6 +925,16 @@ class _MealRow extends ConsumerWidget {
         ),
         child: Row(
           children: [
+            // Meal score dot
+            Container(
+              width: 8,
+              height: 8,
+              margin: const EdgeInsets.only(right: 10),
+              decoration: BoxDecoration(
+                color: scoreColor,
+                shape: BoxShape.circle,
+              ),
+            ),
             // Thumbnail
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
@@ -1592,6 +1623,61 @@ class _MealListSkeleton extends StatelessWidget {
             color: AppColors.surface,
             borderRadius: BorderRadius.circular(14),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Streak card (Phase 3) ────────────────────────────────────────────────────
+//
+// Shown on the Dashboard when the user has a logging streak >= 1 day.
+// Tapping opens the WeeklySummaryScreen for the full 7-day breakdown.
+
+class _StreakCard extends StatelessWidget {
+  final int streak;
+  const _StreakCard({required this.streak});
+
+  @override
+  Widget build(BuildContext context) {
+    final label = streak == 1 ? '1-day streak' : '$streak-day streak';
+    final subLabel = streak < 3
+        ? 'Log today to keep it going'
+        : streak < 7
+            ? 'Great consistency!'
+            : '$streak days — incredible!';
+
+    return GestureDetector(
+      onTap: () {
+        HapticService.selection();
+        context.push('/weekly-summary');
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: AppColors.accent.withValues(alpha: 0.07),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+              color: AppColors.accent.withValues(alpha: 0.25), width: 1),
+        ),
+        child: Row(
+          children: [
+            const Text('🔥', style: TextStyle(fontSize: 22)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label,
+                      style: AppTextStyles.labelLarge
+                          .copyWith(color: AppColors.accent)),
+                  Text(subLabel, style: AppTextStyles.caption),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded,
+                color: AppColors.accent, size: 20),
+          ],
         ),
       ),
     );

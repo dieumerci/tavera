@@ -1,5 +1,17 @@
 import 'food_item.dart';
 
+// ── Meal scoring ───────────────────────────────────────────────────────────────
+// Rates each meal relative to the user's daily calorie goal.
+//
+// Green  ≤ 35 % of daily goal AND protein ≥ 15 g  →  well-balanced, on track
+// Yellow ≤ 50 % of daily goal                     →  moderate, acceptable
+// Red    > 50 % of daily goal                     →  heavy meal, worth noting
+//
+// These thresholds are intentionally non-judgmental — they indicate how a
+// single meal sits within the context of the day, not whether it is "good"
+// or "bad". The app does not shame users for red meals.
+enum MealScore { green, yellow, red }
+
 class MealLog {
   final String id;
   final String userId;
@@ -26,6 +38,16 @@ class MealLog {
     this.totalFat,
     this.totalFiber,
   });
+
+  /// Score relative to [calorieGoal] (daily target, not per-meal allocation).
+  /// Thresholds are intentional guidance, not judgement.
+  MealScore score({required int calorieGoal}) {
+    final ratio = totalCalories / calorieGoal;
+    final protein = totalProtein ?? 0;
+    if (ratio <= 0.35 && protein >= 15) return MealScore.green;
+    if (ratio <= 0.50) return MealScore.yellow;
+    return MealScore.red;
+  }
 
   /// Net carbs = carbs − fiber, floored at 0 per item.
   /// For items without fiber data (older logs), fiber defaults to 0 so

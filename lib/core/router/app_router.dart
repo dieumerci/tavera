@@ -10,6 +10,7 @@ import '../../views/challenges/challenge_detail_screen.dart';
 import '../../views/challenges/challenges_screen.dart';
 import '../../views/fasting/fasting_screen.dart';
 import '../../views/meal_planner/meal_planner_screen.dart';
+import '../../views/weekly_summary/weekly_summary_screen.dart';
 import '../../views/coaching/coaching_screen.dart';
 import '../../views/dashboard/dashboard_screen.dart';
 import '../../views/history/history_screen.dart';
@@ -156,6 +157,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => _slideTransition(
           state,
           const FastingScreen(),
+        ),
+      ),
+
+      // Weekly summary — accessed from dashboard streak card
+      GoRoute(
+        path: '/weekly-summary',
+        pageBuilder: (context, state) => _slideTransition(
+          state,
+          const WeeklySummaryScreen(),
         ),
       ),
 

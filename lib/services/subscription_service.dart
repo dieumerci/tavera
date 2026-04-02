@@ -43,7 +43,7 @@ class SubscriptionService {
   // ── Dev override ─────────────────────────────────────────────────────────
   // Set to true to unlock all premium features locally without any SDK setup.
   // Flip to false before shipping to production or when testing paywall flow.
-  static const bool _devPremiumOverride = true;
+  static const bool _devPremiumOverride = false;
 
   // ── Primary gate ─────────────────────────────────────────────────────────
 

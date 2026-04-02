@@ -1,6 +1,7 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -16,6 +17,14 @@ import 'services/subscription_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Load .env for local development. Silently skipped in production builds
+  // where the file is absent and keys are injected via --dart-define instead.
+  try {
+    await dotenv.load(fileName: '.env');
+  } catch (_) {
+    // .env not present — CI or release build using --dart-define keys.
+  }
 
   // Lock to portrait — camera UX is portrait-native
   await SystemChrome.setPreferredOrientations([

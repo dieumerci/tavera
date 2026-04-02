@@ -51,3 +51,4 @@ node_modules/
 .env
 *.env
 supabase/.env
+.claude/worktrees/

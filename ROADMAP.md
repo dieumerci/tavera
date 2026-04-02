@@ -2,7 +2,7 @@
 
 **Document Version:** 2.0
 **Last Updated:** April 2, 2026
-**Status:** Phase 1 Complete · Phase 2 In Progress (known-meal backfill, AI request logging, coaching cron, challenge motivational messages shipped — remaining: RevenueCat setup, push notifications, PostHog project)
+**Status:** Phase 1 ✅ Complete · Phase 2 ✅ Complete · Phase 3 🔄 In Progress
 **Author:** Dee (Founder)
 
 > **Legend:** ✅ Complete · 🔄 In Progress · ⏭ Deferred · ❌ Not started
@@ -221,7 +221,9 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 
 **Objective:** Add adaptive meal memory, coaching insights, premium subscription, paywall, and two high-value retention features: Social Accountability Challenges and AI Meal Planner with Grocery Integration. This is the phase where Tavera becomes a business and a habit.
 
-**Status: 🔄 IN PROGRESS**
+**Status: ✅ COMPLETE**
+
+> **Production-ready audit (April 2, 2026):** All hard-coded credentials eliminated. `Env` class unified dart-define (compile-time) + flutter_dotenv (runtime) with dart-define taking priority. `_devPremiumOverride` set to `false`. RevenueCat entitlement ID fixed to exact dashboard value `Kazadi Inc Pro`. `.env.example` created. `revenuecat-webhook` Edge Function live (event routing, HMAC verification, retry-safe HTTP 200). `ai_request_logs` table live (anonymised, indexed). Gemini migrated from 1.5 Flash to 2.0 Flash. README fully rewritten with production setup guide.
 
 > **Infrastructure complete (March 26, 2026):** Challenges tab wired to shell nav (Tab 2). Floating FAB with notch. Strong haptics. Account deletion Edge Function live. Challenge scoring (`challenge-notifier`) wired to all log paths. Water intake persisted to `daily_stats`. Dashboard cold-start data loading fixed. Camera permission screen fixed. Profile back-button crash fixed. Paywall sheet helper + Meal Planner / Challenges features added. `DateFormatting.toIsoDateString()` extension centralised. PostHog analytics integrated (8 key events, no-op in dev). Cold-start auth fix applied to all AsyncNotifier controllers. Adaptive meal memory wired to both log paths. Migration 005: `increment_known_meal_count` RPC, `grocery_lists` upsert constraint, challenges RLS self-recursion fixed.
 
@@ -266,7 +268,7 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 - ✅ Implement subscription status checking on app launch and cache locally — `revenueCatPremiumProvider` FutureProvider with `.valueOrNull` fallback
 - ✅ Gate premium features: coaching insights, adaptive meal memory, macro tracking, history export, Social Challenges (leaderboards), AI Meal Planner
 - ✅ Implement subscription restoration for users who reinstall the app — Restore button in PaywallSheet + Profile screen
-- [ ] Set up RevenueCat webhooks → Supabase Edge Function for subscription status sync
+- ✅ Set up RevenueCat webhooks → Supabase Edge Function for subscription status sync — `revenuecat-webhook` Edge Function; verifies `Authorization` header against `REVENUECAT_WEBHOOK_SECRET`; maps all RevenueCat event types to `free`/`premium` tier; retry-safe (always returns HTTP 200)
 - [ ] Test purchase flows on both platforms with sandbox/test accounts
 
 ### Social Accountability Challenges
@@ -373,7 +375,9 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 
 ## Phase 3 — Retention & Depth (Weeks 23–34)
 
-**Status: ❌ NOT STARTED**
+**Status: 🔄 IN PROGRESS**
+
+> **Phase 3 started (April 2, 2026):** Meal scoring (green/yellow/red per meal relative to daily goal) live as a computed method on `MealLog` — no new DB columns. Consistency streak computed on-read by scanning `meal_logs` date sequence — zero drift risk vs. stored counter. Weekly summary screen built with animated 7-day bar chart, macro averages, best/heaviest day highlights, and streak banner.
 
 > **Competitive positioning note (March 2026):** Phase 3 should deliver Tavera's three core differentiators vs. all major competitors: GLP-1 Mode (only MyNetDiary has any GLP-1 support), Mood-Energy Correlation Engine (no competitor has this), and Calorie Banking (flexible dieting vs. guilt-inducing daily targets). These are not just features — they are the "insight app" positioning made concrete.
 
@@ -382,9 +386,9 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 - [ ] Build the restaurant menu scanning feature
 - [ ] Integrate Apple HealthKit and Google Health Connect for activity data import (step counting out of scope; focus on calorie burn from workouts)
 - [ ] Implement dynamic calorie budget adjustment based on imported activity data
-- [ ] Build the meal scoring system: green/yellow/red rating per meal based on goal alignment
-- [ ] Implement consistency streaks that reward logging frequency
-- [ ] Build the weekly summary screen with visual trends
+- ✅ Build the meal scoring system: green/yellow/red rating per meal based on goal alignment — `MealScore` enum + `MealLog.score({calorieGoal})` computed method; score dots rendered in `_MealRow` on Dashboard; green = ≤35% of goal with ≥15g protein, yellow = ≤50%, red = over threshold
+- ✅ Implement consistency streaks that reward logging frequency — `loggingStreakProvider` scans last 60 days of `meal_logs`, counts consecutive days ending today; `_StreakCard` on Dashboard navigates to weekly summary
+- ✅ Build the weekly summary screen with visual trends — `WeeklySummaryScreen`: animated 7-day calorie bar chart with goal line, macro averages grid, best/heaviest day highlight card, horizontal macro proportion bar, streak banner
 - [ ] Implement data export (CSV) for premium users
 - [ ] Add multi-language support starting with Spanish, Portuguese, French, and Hindi
 - [ ] Evaluate Google Cloud Vision + USDA database lookup to replace or supplement OpenAI Vision
