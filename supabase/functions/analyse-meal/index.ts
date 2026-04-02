@@ -1,5 +1,7 @@
 // @ts-ignore
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+// @ts-ignore
+import { createClient } from "jsr:@supabase/supabase-js@2";
 // verify_jwt: false — auth enforced at the Supabase Storage layer.
 // This function fetches the image, base64-encodes it, and sends it to
 // Google Gemini 1.5 Flash for food recognition. No JWT check needed here.
@@ -117,12 +119,35 @@ function cleanJson(text: string): string {
     .trim();
 }
 
+// ─── Anonymised AI request logger ────────────────────────────────────────────
+// Fire-and-forget: errors are swallowed so logging never breaks the main path.
+function logAiRequest(
+  success: boolean,
+  latencyMs: number,
+  errorCode?: string
+): void {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const serviceKey  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!supabaseUrl || !serviceKey) return;
+
+  const supabase = createClient(supabaseUrl, serviceKey);
+  supabase.from("ai_request_logs").insert({
+    function_name: "analyse-meal",
+    model: GEMINI_MODEL,
+    latency_ms: latencyMs,
+    success,
+    error_code: errorCode ?? null,
+  }).then(() => {/* fire-and-forget */}).catch(() => {/* swallow */});
+}
+
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
+
+  const t0 = Date.now();
 
   try {
     const { image_url } = await req.json();
@@ -156,12 +181,15 @@ Deno.serve(async (req: Request) => {
       throw new Error(`Could not parse Gemini response as JSON: ${rawContent}`);
     }
 
+    logAiRequest(true, Date.now() - t0);
+
     return new Response(JSON.stringify(parsed), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[analyse-meal]", message);
+    logAiRequest(false, Date.now() - t0, message.slice(0, 80));
 
     return new Response(JSON.stringify({ error: message }), {
       status: 500,

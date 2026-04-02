@@ -1,8 +1,8 @@
 # TAVERA — Product Roadmap & Development Checklist
 
-**Document Version:** 1.9
-**Last Updated:** March 28, 2026
-**Status:** Phase 1 Complete · Phase 2 In Progress (code ~98% done — GEMINI_API_KEY secret + external setup remaining)
+**Document Version:** 2.0
+**Last Updated:** April 2, 2026
+**Status:** Phase 1 Complete · Phase 2 In Progress (known-meal backfill, AI request logging, coaching cron, challenge motivational messages shipped — remaining: RevenueCat setup, push notifications, PostHog project)
 **Author:** Dee (Founder)
 
 > **Legend:** ✅ Complete · 🔄 In Progress · ⏭ Deferred · ❌ Not started
@@ -89,7 +89,7 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 - ✅ Build response assembly returning structured meal estimates (name, portion, calories, macros, confidence)
 - ✅ Handle error cases: unrecognised food, API timeout, network failure — with debug-level error messages surfaced in UI
 - ✅ Add fallback to manual food search when AI confidence is below 0.5 — 'Low confidence — tap to correct' hint row on FoodItemCard opens _EditItemSheet
-- [ ] Log all AI requests and responses for future model improvement (anonymised)
+- ✅ Log all AI requests and responses for future model improvement (anonymised) — `ai_request_logs` table (migration 010); `logAiRequest()` in `analyse-meal` Edge Function
 - [ ] Test with at least 50 different meal photos across cuisines and validate accuracy
 
 ### Meal Review & Confirmation Screen
@@ -231,8 +231,8 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 
 ### Adaptive Meal Memory
 
-- [ ] Write the known meal detection query: identify meals logged 3+ times with similar food item combinations
-- [ ] Build the known_meals table population logic (scheduled PostgreSQL function or Edge Function running daily)
+- ✅ Write the known meal detection query: identify meals logged 3+ times with similar food item combinations — `_known_meal_fingerprint()` + `backfill_known_meals()` in migration 010
+- ✅ Build the known_meals table population logic (scheduled PostgreSQL function or Edge Function running daily) — `backfill_known_meals()` runs on migration + nightly pg_cron at 02:00 UTC
 - ✅ Implement time-of-day bucketing so known meals are offered at the right time — circular hour distance sort in `topKnownMealsProvider`
 - ✅ Build the known meals suggestion row on the Dashboard — horizontal scrollable chips, long-press action sheet
 - ✅ Implement one-tap logging for known meals (confirm with single tap, no camera needed) — `relog()` in KnownMealController
@@ -246,7 +246,7 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 - ✅ Design the OpenAI prompt template: user goals, weekly meal summary, detected patterns, nutritional gaps
 - ✅ Constrain AI output to 1–3 actionable insights per week
 - ✅ Implement insight categories: pattern observations, recommendations, milestones
-- [ ] Schedule the Edge Function to run weekly (Monday morning per user timezone) _(needs cron or pg_cron setup)_
+- ✅ Schedule the Edge Function to run weekly (Monday morning per user timezone) — pg_cron `weekly-coaching-insights` every Monday 08:00 UTC in migration 010; `generate-coaching` now supports `trigger:"weekly_cron"` batch mode that processes all users with ≥ 3 log days that week
 - ✅ Build the insights screen in the Flutter app — `CoachingScreen` with week-grouped `_InsightCard` list
 - ✅ Implement read/unread state for insights — `markRead()` + optimistic state patch
 - ✅ Add a teaser insight card on the Dashboard for premium users — `_CoachingTeaserCard`
@@ -288,7 +288,7 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 
 #### AI motivational notifications
 - ✅ Write Edge Function `challenge-notifier` — wired to both `directLogMeal` and `MealController.confirmAndSave()`; fire-and-forget with `onComplete` callback to invalidate `myChallengesProvider` leaderboard cache; guarded by `hasChallenges` check to skip the network call when the user has no active challenges
-- [ ] Generate personalised motivational messages using OpenAI (progress-aware, not generic)
+- ✅ Generate personalised motivational messages using Gemini (progress-aware, not generic) — `generateMotivationalMessage()` in `challenge-notifier`; returned as `motivational_message` in response body
 - [ ] Send push notifications: milestone achievements, streak alerts, friendly competitive nudges
 - [ ] Notification suppression: respect the user's meal-time suppression windows
 
