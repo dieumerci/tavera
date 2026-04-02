@@ -75,9 +75,7 @@ class CoachingController extends AsyncNotifier<List<CoachingInsight>> {
 
     state = const AsyncValue.loading();
     try {
-      // Force a token refresh before invoking — prevents 401 from stale JWT.
-      await client.auth.getSession();
-
+      // supabase_flutter 2.x refreshes the JWT automatically; no manual refresh needed.
       await client.functions.invoke(
         'generate-coaching',
         body: {'user_id': userId, 'week_start': weekStartStr},

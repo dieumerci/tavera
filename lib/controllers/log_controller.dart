@@ -32,6 +32,11 @@ class DailyLogState {
 
   int get logCount => todayLogs.length;
 
+  /// Sum of dietary fibre across all today's meals (grams).
+  /// Null entries (pre-migration logs) are treated as 0.
+  double get totalFiber =>
+      todayLogs.fold(0.0, (s, l) => s + (l.totalFiber ?? 0));
+
   double get totalNetCarbs =>
       todayLogs.fold(0.0, (s, l) => s + l.totalNetCarbs);
 

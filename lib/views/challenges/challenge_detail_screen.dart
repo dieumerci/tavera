@@ -283,18 +283,20 @@ class _CompletionBannerState extends State<_CompletionBanner>
   }
 
   String _buildShareText() {
-    final rank = participant.rank > 0 ? '#${participant.rank}' : 'a participant';
-    final score = participant.score.toStringAsFixed(0);
-    final streak = participant.streakDays;
-    final start = DateFormat('MMM d').format(challenge.startDate);
-    final end = DateFormat('MMM d').format(challenge.endDate);
+    final p = widget.participant;
+    final c = widget.challenge;
+    final rank = p.rank > 0 ? '#${p.rank}' : 'a participant';
+    final score = p.score.toStringAsFixed(0);
+    final streak = p.streakDays;
+    final start = DateFormat('MMM d').format(c.startDate);
+    final end = DateFormat('MMM d').format(c.endDate);
 
     return '''
 🏆 I just completed a challenge on Tavera!
 
-${challenge.type.icon} ${challenge.title}
+${c.type.icon} ${c.title}
 📅 $start – $end
-🎯 Goal: ${challenge.targetValue.toStringAsFixed(0)} ${challenge.type == ChallengeType.calorieBudget ? 'kcal/day' : challenge.type == ChallengeType.streak ? 'day streak' : challenge.type == ChallengeType.macroTarget ? 'g protein/day' : 'pts'}
+🎯 Goal: ${c.targetValue.toStringAsFixed(0)} ${c.type == ChallengeType.calorieBudget ? 'kcal/day' : c.type == ChallengeType.streak ? 'day streak' : c.type == ChallengeType.macroTarget ? 'g protein/day' : 'pts'}
 🏅 Final rank: $rank
 ⭐ Score: $score pts${streak > 0 ? '\n🔥 Best streak: $streak days' : ''}
 

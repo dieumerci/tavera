@@ -5,11 +5,10 @@ class FoodItem {
   final int calories;
   final double? protein;
   final double? carbs;
-  final double? fiber;
-  final double? fat;
   /// Dietary fibre in grams. Used to compute net carbs (carbs − fiber)
   /// when the user enables Net Carbs Mode in Profile → Goals.
   final double? fiber;
+  final double? fat;
   final double confidenceScore;
 
   const FoodItem({
@@ -21,7 +20,6 @@ class FoodItem {
     this.carbs,
     this.fiber,
     this.fat,
-    this.fiber,
     this.confidenceScore = 1.0,
   });
 
@@ -32,9 +30,9 @@ class FoodItem {
         calories: (map['calories'] as num).toInt(),
         protein: (map['protein'] as num?)?.toDouble(),
         carbs: (map['carbs'] as num?)?.toDouble(),
-        fiber: (map['fiber'] as num?)?.toDouble(),
+        // Prefer 'fiber_g' (AI response key); fall back to 'fiber' (legacy DB key).
+        fiber: ((map['fiber_g'] ?? map['fiber']) as num?)?.toDouble(),
         fat: (map['fat'] as num?)?.toDouble(),
-        fiber: (map['fiber_g'] as num?)?.toDouble(),
         confidenceScore: (map['confidence'] as num?)?.toDouble() ?? 1.0,
       );
 
@@ -45,9 +43,10 @@ class FoodItem {
         'calories': calories,
         'protein': protein,
         'carbs': carbs,
+        // Write both keys for forward/backward compatibility.
         'fiber': fiber,
-        'fat': fat,
         'fiber_g': fiber,
+        'fat': fat,
         'confidence': confidenceScore,
       };
 
@@ -69,7 +68,6 @@ class FoodItem {
     double? carbs,
     double? fiber,
     double? fat,
-    double? fiber,
   }) =>
       FoodItem(
         name: name ?? this.name,
@@ -80,7 +78,6 @@ class FoodItem {
         carbs: carbs ?? this.carbs,
         fiber: fiber ?? this.fiber,
         fat: fat ?? this.fat,
-        fiber: fiber ?? this.fiber,
         confidenceScore: confidenceScore,
       );
 }
