@@ -163,7 +163,7 @@ class _PlanTab extends ConsumerWidget {
   }
 }
 
-class _PlanContent extends StatelessWidget {
+class _PlanContent extends ConsumerWidget {
   final MealPlan plan;
   final int selectedDay;
   final ValueChanged<int> onDayChanged;
@@ -177,7 +177,7 @@ class _PlanContent extends StatelessWidget {
   static const _dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     // Guard: clamp selectedDay in case the plan has fewer than 7 days.
     final safeDay =
         selectedDay.clamp(0, (plan.days.length - 1).clamp(0, 6));
@@ -200,6 +200,10 @@ class _PlanContent extends StatelessWidget {
                   onTap: () {
                     HapticService.selection();
                     onDayChanged(i);
+                  },
+                  onLongPress: () {
+                    HapticService.medium();
+                    _showRegenerateDayDialog(context, ref, i);
                   },
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 180),
@@ -253,16 +257,37 @@ class _PlanContent extends StatelessWidget {
             padding:
                 const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
                   '${_dayNames[safeDay]} — ${day.totalCalories} kcal',
                   style: AppTextStyles.labelLarge,
                 ),
+                const SizedBox(width: 6),
                 Text(
-                  '${day.meals.length} meals',
+                  '· ${day.meals.length} meals',
                   style: AppTextStyles.caption
                       .copyWith(color: AppColors.textSecondary),
+                ),
+                const Spacer(),
+                GestureDetector(
+                  onTap: () {
+                    HapticService.selection();
+                    _showRegenerateDayDialog(context, ref, safeDay);
+                  },
+                  child: Row(
+                    children: [
+                      Icon(Icons.refresh_rounded,
+                          size: 14, color: AppColors.accent),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Regenerate',
+                        style: AppTextStyles.caption.copyWith(
+                          color: AppColors.accent,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -278,7 +303,11 @@ class _PlanContent extends StatelessWidget {
               : ListView(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
                   children: [
-                    ...day.meals.map((meal) => _MealCard(meal: meal)),
+                    ...day.meals.map((meal) => _MealCard(
+                          meal: meal,
+                          onSwap: () => _showSwapSheet(
+                              context, ref, plan.id, safeDay, meal),
+                        )),
                     if (plan.aiNotes != null && plan.aiNotes!.isNotEmpty) ...[
                       const SizedBox(height: 8),
                       _AiNotesCard(notes: plan.aiNotes!),
@@ -291,11 +320,294 @@ class _PlanContent extends StatelessWidget {
   }
 }
 
+// ─── Regenerate-day dialog helper ─────────────────────────────────────────────
+
+void _showRegenerateDayDialog(
+    BuildContext context, WidgetRef ref, int dayIndex) {
+  const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: AppColors.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: Text('Regenerate ${dayNames[dayIndex]}?',
+          style: AppTextStyles.labelLarge),
+      content: Text(
+        'AI will replace meals for this day with fresh ideas. '
+        'Other days and your grocery list are unchanged.',
+        style:
+            AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(),
+          child: const Text('Cancel',
+              style: TextStyle(color: AppColors.textSecondary)),
+        ),
+        TextButton(
+          onPressed: () {
+            Navigator.of(ctx).pop();
+            ref
+                .read(mealPlanControllerProvider.notifier)
+                .regenerateDay(dayIndex);
+          },
+          child: const Text('Regenerate',
+              style: TextStyle(color: AppColors.accent)),
+        ),
+      ],
+    ),
+  );
+}
+
+// ─── Swap bottom sheet ────────────────────────────────────────────────────────
+
+void _showSwapSheet(
+  BuildContext context,
+  WidgetRef ref,
+  String planId,
+  int dayIndex,
+  PlannedMeal currentMeal,
+) {
+  // Kick off the alternatives load immediately.
+  ref.read(mealPlanControllerProvider.notifier).loadSwapAlternatives(
+        dayIndex: dayIndex,
+        slot: currentMeal.slot,
+        currentMealName: currentMeal.name,
+      );
+
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: AppColors.surface,
+    shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+    isScrollControlled: true,
+    builder: (ctx) => _SwapSheet(
+      dayIndex: dayIndex,
+      currentMeal: currentMeal,
+      onDismiss: () {
+        ref.read(mealPlanControllerProvider.notifier).dismissSwap();
+        Navigator.of(ctx).pop();
+      },
+      onApply: (replacement) {
+        ref.read(mealPlanControllerProvider.notifier).applySwap(
+              dayIndex: dayIndex,
+              slot: currentMeal.slot,
+              replacement: replacement,
+            );
+        HapticService.medium();
+        Navigator.of(ctx).pop();
+      },
+    ),
+  );
+}
+
+class _SwapSheet extends ConsumerWidget {
+  final int dayIndex;
+  final PlannedMeal currentMeal;
+  final VoidCallback onDismiss;
+  final ValueChanged<PlannedMeal> onApply;
+
+  const _SwapSheet({
+    required this.dayIndex,
+    required this.currentMeal,
+    required this.onDismiss,
+    required this.onApply,
+  });
+
+  static const _dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final planState =
+        ref.watch(mealPlanControllerProvider).valueOrNull;
+    final isLoading = planState?.isLoadingSwap ?? false;
+    final alternatives = planState?.swapAlternatives;
+
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.6,
+      minChildSize: 0.4,
+      maxChildSize: 0.9,
+      builder: (_, controller) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Swap ${currentMeal.slot.label}',
+                        style: AppTextStyles.titleMedium,
+                      ),
+                      Text(
+                        '${_dayNames[dayIndex]} · ${currentMeal.name}',
+                        style: AppTextStyles.caption
+                            .copyWith(color: AppColors.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  onPressed: onDismiss,
+                  icon: const Icon(Icons.close_rounded,
+                      color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Choose an alternative:',
+              style: AppTextStyles.bodyMedium
+                  .copyWith(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 16),
+            if (isLoading)
+              const Expanded(child: Center(child: TaveraLoading()))
+            else if (alternatives == null || alternatives.isEmpty)
+              Expanded(
+                child: Center(
+                  child: Text(
+                    'No alternatives available.\nTry again.',
+                    textAlign: TextAlign.center,
+                    style: AppTextStyles.bodyMedium
+                        .copyWith(color: AppColors.textSecondary),
+                  ),
+                ),
+              )
+            else
+              Expanded(
+                child: ListView.builder(
+                  controller: controller,
+                  itemCount: alternatives.length,
+                  itemBuilder: (_, i) {
+                    final alt = alternatives[i];
+                    return _SwapAlternativeCard(
+                      meal: alt,
+                      onTap: () => onApply(alt),
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SwapAlternativeCard extends StatelessWidget {
+  final PlannedMeal meal;
+  final VoidCallback onTap;
+
+  const _SwapAlternativeCard({required this.meal, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        HapticService.selection();
+        onTap();
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.background,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(meal.name, style: AppTextStyles.labelLarge),
+                  if (meal.description.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      meal.description,
+                      style: AppTextStyles.caption.copyWith(
+                          color: AppColors.textSecondary),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                  if (meal.prepMinutes != null) ...[
+                    const SizedBox(height: 4),
+                    Row(children: [
+                      Icon(Icons.timer_outlined,
+                          size: 11, color: AppColors.textTertiary),
+                      const SizedBox(width: 3),
+                      Text(
+                        '${meal.prepMinutes} min',
+                        style: AppTextStyles.caption.copyWith(
+                            color: AppColors.textTertiary, fontSize: 11),
+                      ),
+                    ]),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '${meal.calories} kcal',
+                  style: AppTextStyles.caption.copyWith(
+                    color: AppColors.accent,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: AppColors.accent,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    'Use this',
+                    style: TextStyle(
+                      color: Colors.black,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // ─── Meal card ────────────────────────────────────────────────────────────────
 
 class _MealCard extends StatelessWidget {
   final PlannedMeal meal;
-  const _MealCard({required this.meal});
+  final VoidCallback? onSwap;
+  const _MealCard({required this.meal, this.onSwap});
 
   Color get _slotColor => switch (meal.slot) {
         MealSlot.breakfast => const Color(0xFFFFD166),
@@ -352,6 +664,17 @@ class _MealCard extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                 ),
               ),
+              if (onSwap != null) ...[
+                const SizedBox(width: 10),
+                GestureDetector(
+                  onTap: () {
+                    HapticService.selection();
+                    onSwap!();
+                  },
+                  child: const Icon(Icons.swap_horiz_rounded,
+                      size: 18, color: AppColors.textSecondary),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 10),

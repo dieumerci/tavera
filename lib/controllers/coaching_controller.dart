@@ -75,6 +75,9 @@ class CoachingController extends AsyncNotifier<List<CoachingInsight>> {
 
     state = const AsyncValue.loading();
     try {
+      // Force a token refresh before invoking — prevents 401 from stale JWT.
+      await client.auth.getSession();
+
       await client.functions.invoke(
         'generate-coaching',
         body: {'user_id': userId, 'week_start': weekStartStr},

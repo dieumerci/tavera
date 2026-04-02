@@ -1,8 +1,8 @@
 # TAVERA — Product Roadmap & Development Checklist
 
-**Document Version:** 1.6
-**Last Updated:** March 26, 2026
-**Status:** Phase 1 Complete · Phase 2 In Progress (code ~90% done — external setup remaining)
+**Document Version:** 1.9
+**Last Updated:** March 28, 2026
+**Status:** Phase 1 Complete · Phase 2 In Progress (code ~98% done — GEMINI_API_KEY secret + external setup remaining)
 **Author:** Dee (Founder)
 
 > **Legend:** ✅ Complete · 🔄 In Progress · ⏭ Deferred · ❌ Not started
@@ -225,6 +225,8 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 
 > **Infrastructure complete (March 26, 2026):** Challenges tab wired to shell nav (Tab 2). Floating FAB with notch. Strong haptics. Account deletion Edge Function live. Challenge scoring (`challenge-notifier`) wired to all log paths. Water intake persisted to `daily_stats`. Dashboard cold-start data loading fixed. Camera permission screen fixed. Profile back-button crash fixed. Paywall sheet helper + Meal Planner / Challenges features added. `DateFormatting.toIsoDateString()` extension centralised. PostHog analytics integrated (8 key events, no-op in dev). Cold-start auth fix applied to all AsyncNotifier controllers. Adaptive meal memory wired to both log paths. Migration 005: `increment_known_meal_count` RPC, `grocery_lists` upsert constraint, challenges RLS self-recursion fixed.
 
+> **AI provider migration (March 28, 2026):** All 4 OpenAI-powered Edge Functions migrated to Google Gemini API for ~66× cost reduction vs GPT-4o. `analyse-meal` v4 → Gemini 1.5 Flash (image fetched as base64 `inlineData`). `generate-meal-plan` v2, `swap-planned-meal` v2 → Gemini 1.5 Flash. `generate-coaching` v2 → Gemini 1.5 Pro (quality-sensitive; Pro retained for premium retention). **Action required:** Add `GEMINI_API_KEY` secret to Supabase Edge Functions (get free key from aistudio.google.com — 1,500 free req/day). `OPENAI_API_KEY` secret can be kept or removed.
+
 > **Subscription & Paywall flexibility note:** The monetisation model and paywall placement are not yet finalised. The architecture must remain flexible enough to support different models (freemium, hard paywall, trial-first) without requiring significant rewrites. Gate features behind a capabilities check that abstracts away the specific model. RevenueCat is the planned payment layer; it supports model changes at the product configuration level.
 
 ### Adaptive Meal Memory
@@ -297,7 +299,7 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 - [ ] Implement achievement unlock notifications with celebratory animation
 
 #### Phase 2 Social Challenges scope
-- [ ] Maximum 10 participants per challenge in Phase 2 (scale limits deferred)
+- ✅ Maximum 10 participants per challenge — `Challenge.maxParticipants` constant; client-side count check in `join()` before `_joinChallenge()`; Join button disabled + shows "Full" when at cap; capacity shown as "X/10" chip (red when full)
 - ✅ Challenge leave flow: non-creator participants can leave via confirm dialog on detail screen — `_LeaveButton` widget
 - [ ] Custom challenge types deferred to Phase 3
 
@@ -316,14 +318,14 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 - ✅ Design OpenAI prompt template: emphasise pattern continuity (similar ingredients to what user already eats), nutritional gap filling, practical meal prep time
 - ✅ Build meal plan display screen: week view with day tabs, each meal expandable — `MealPlannerScreen` Plan tab
 - ✅ Implement meal plan regeneration: "Regenerate week" — refresh icon in app bar calls `generate()`
-- [ ] Implement "Regenerate day" action — requires Edge Function `day_index` parameter
-- [ ] Allow individual meal swaps: tap a meal → AI suggests 3 alternatives
+- ✅ Implement "Regenerate day" action — `day_index` param to `generate-meal-plan`; long-press day chip or tap "Regenerate" in summary bar; confirm dialog before calling; merges new day into existing plan
+- ✅ Allow individual meal swaps: tap ⇄ icon on meal card → `swap-planned-meal` Edge Function returns 3 alternatives; `_SwapSheet` bottom sheet; `applySwap()` persists choice with optimistic update
 
 #### Grocery list
 - ✅ Build grocery list generator from confirmed meal plan: aggregate ingredients across all meals, de-duplicate, sum quantities — `generate-meal-plan` Edge Function populates `grocery_lists` table
 - ✅ Grocery list grouped by category: Produce, Protein, Dairy, Pantry, Frozen — `GroceryItem.category` enum + grouped display
 - ✅ Check-off UI: tap to mark items purchased, persists state locally — `toggleGroceryItem()` with optimistic update + DB sync
-- [ ] Edit quantities and add/remove items manually
+- ✅ Edit quantities and add/remove items manually — long-press → `_GroceryItemActionSheet`; `+` FAB triggers `_showAddItemDialog`; `editGroceryItem` / `removeGroceryItem` / `addGroceryItem` in controller
 - ✅ Export grocery list as plain text (share sheet) — share token copied to clipboard via `shareGroceryList()`
 
 #### Grocery delivery integration (architecture only in Phase 2 — live integration Phase 3)
@@ -347,7 +349,7 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 #### Net Carbs Toggle _(Priority 4 — Low effort, Medium impact)_
 - ✅ Add `netCarbsMode` bool to `UserProfile` and persist to `profiles.net_carbs_mode` (migration 007)
 - ✅ Add toggle tile in Profile → Goals section (live-updates via Realtime stream)
-- [ ] Wherever carbs are displayed (dashboard, history, review sheet), show `carbs − fiber` when mode is on — awaiting fiber field in `meal_logs` + Edge Function update
+- ✅ Wherever carbs are displayed (dashboard, history, meal detail sheet), show `carbs − fiber` when mode is on — `fiber_g` per item from `analyse-meal` v3; `total_fiber` in `meal_logs` (migration 008); `_netCarbs()` helper in both screens; label switches to "Net Carbs"
 - [ ] Update coaching insights to use net carbs in prompt when mode is on
 
 ### Analytics

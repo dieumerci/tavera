@@ -47,6 +47,9 @@ class DashboardScreen extends ConsumerWidget {
     final log = logAsync.valueOrNull;
     final profile = profileAsync.valueOrNull;
     final calorieGoal = profile?.calorieGoal ?? 2000;
+    final netCarbsMode = profile?.netCarbsMode ?? false;
+    final displayCarbs = _netCarbs(log?.totalCarbs ?? 0, log?.totalFiber, netCarbsMode);
+    final carbLabel = netCarbsMode ? 'Net Carbs' : 'Carbs';
 
     final name = profile?.name;
     final hour = DateTime.now().hour;
@@ -123,8 +126,9 @@ class DashboardScreen extends ConsumerWidget {
                   goal: calorieGoal,
                   protein: log?.totalProtein ?? 0,
                   proteinGoal: _macroGoal(calorieGoal, 'protein'),
-                  carbs: log?.totalCarbs ?? 0,
+                  carbs: displayCarbs,
                   carbGoal: _macroGoal(calorieGoal, 'carbs'),
+                  carbLabel: carbLabel,
                   fat: log?.totalFat ?? 0,
                   fatGoal: _macroGoal(calorieGoal, 'fat'),
                 ),
@@ -163,8 +167,8 @@ class DashboardScreen extends ConsumerWidget {
                     _StatChip(
                       icon: Icons.grain_rounded,
                       iconColor: const Color(0xFFFFF176),
-                      label: 'Carbs',
-                      value: (log?.totalCarbs ?? 0).toStringAsFixed(0),
+                      label: carbLabel,
+                      value: displayCarbs.toStringAsFixed(0),
                       unit: 'g',
                       sub: '/ ${_macroGoal(calorieGoal, 'carbs').toStringAsFixed(0)}g goal',
                     ),
@@ -338,6 +342,13 @@ class DashboardScreen extends ConsumerWidget {
     );
   }
 
+  /// Returns displayable carbs value: subtracts fiber when Net Carbs Mode is on.
+  /// Falls back to [totalCarbs] when [totalFiber] is null (legacy logs).
+  static double _netCarbs(double totalCarbs, double? totalFiber, bool netMode) {
+    if (!netMode || totalFiber == null) return totalCarbs;
+    return (totalCarbs - totalFiber).clamp(0.0, totalCarbs);
+  }
+
   // Rough macro targets based on calorie goal (standard splits: 30% protein, 50% carbs, 20% fat)
   static double _macroGoal(int calories, String macro) {
     switch (macro) {
@@ -487,6 +498,7 @@ class _CalorieRingCard extends StatelessWidget {
   final double proteinGoal;
   final double carbs;
   final double carbGoal;
+  final String carbLabel;
   final double fat;
   final double fatGoal;
 
@@ -497,6 +509,7 @@ class _CalorieRingCard extends StatelessWidget {
     required this.proteinGoal,
     required this.carbs,
     required this.carbGoal,
+    this.carbLabel = 'Carbs',
     required this.fat,
     required this.fatGoal,
   });
@@ -575,7 +588,7 @@ class _CalorieRingCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _MacroBar(
-                  label: 'Carbs',
+                  label: carbLabel,
                   value: carbs,
                   goal: carbGoal,
                   color: const Color(0xFFFFF176),

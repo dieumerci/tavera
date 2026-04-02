@@ -267,6 +267,8 @@ class MealController extends Notifier<MealState> {
             state.items.fold<double>(0.0, (s, i) => s + (i.carbs ?? 0.0)),
         'total_fat':
             state.items.fold<double>(0.0, (s, i) => s + (i.fat ?? 0.0)),
+        'total_fiber':
+            state.items.fold<double>(0.0, (s, i) => s + (i.fiber ?? 0.0)),
       }).select().single();
 
       final log = MealLog.fromMap(response);
