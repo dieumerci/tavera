@@ -14,6 +14,75 @@ Tavera is a cross-platform mobile application that uses computer vision to estim
 
 The core logging pipeline is fully working end-to-end. A user can open the app, see their daily Dashboard, tap the + button to log a meal (via camera, gallery, barcode, or manual entry), confirm AI-identified food items, and see their calorie and macro progress update in real time.
 
+---
+
+## Test Account
+
+A fully-unlocked **premium** account is provisioned for QA and demo testing:
+
+| Field    | Value                  |
+|----------|------------------------|
+| Email    | `preview@tavera.app`   |
+| Password | `TaveraPreview2024!`   |
+| Tier     | Premium (all features unlocked) |
+| Profile  | Name: Preview User · Goal: 2000 kcal · Male · 28 · 178 cm · 75 kg |
+
+This account bypasses all free-tier limits (3 meals/day cap, premium feature gates) because its `profiles.subscription_tier` is set to `'premium'` in the database. It is scoped to the development/staging Supabase project and should not be used in production. Rotate the password before sharing with external testers.
+
+---
+
+## Production Readiness Audit (April 2026)
+
+### Bugs Fixed
+
+| # | Severity | Issue | Fix |
+|---|----------|-------|-----|
+| 1 | High | **7-day trend not loading on first open** — `weeklyCaloriesProvider`, `weeklyFullStatsProvider`, and `loggingStreakProvider` read `currentUser?.id` directly. On cold start, while Supabase restores the session from secure storage, `currentUser` is momentarily `null`. The providers short-circuited to all-zeros and cached that result, permanently hiding the chart. | Added `await ref.watch(authStateProvider.future)` to all three providers, mirroring the pattern already used by `LogController`. The provider now waits for auth before querying. |
+| 2 | Medium | **7-day trend shows nothing while loading** — When the provider was legitimately loading (not the auth race), `valueOrNull` returned `null` and the section was silently hidden with no loading indicator. | Replaced `valueOrNull` with full `.when(loading:, data:, error:)` branching. A skeleton card is shown during load so the layout never shifts. |
+| 3 | Medium | **`weeklyFullStatsProvider` date key without zero-padding** — Day keys were constructed as `${y}-${m}-${d}` (e.g. `2026-1-5`). On month/day boundaries, this mismatched the lookup key used in the 7-day output loop, producing phantom zero entries for valid log days. | Keys now use `.padLeft(2, '0')` for month and day, matching the pattern already used in `loggingStreakProvider`. |
+
+### Chart Library Upgrade
+
+The hand-rolled `AnimatedContainer` bar chart has been replaced with **[fl_chart](https://pub.dev/packages/fl_chart) 0.70.x**:
+
+- Touch tooltips showing exact calorie values on bar tap
+- Dashed goal line overlaid on the chart at the user's calorie target
+- Smooth 400 ms easeOut animation on data changes
+- Consistent dark theming — bars use `AppColors.accent` / `AppColors.danger` / `AppColors.border` for under-goal / over-goal / empty days
+
+The weekly summary screen's `_CalorieBars` widget retains its pure-Flutter implementation for now; it will be migrated to fl_chart in a follow-up.
+
+### Feature Readiness Summary
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Camera-to-log AI pipeline | ✅ Production ready | Gemini 2.0 Flash, ~3–5 s |
+| Barcode scanning | ✅ Production ready | Open Food Facts + OCR fallback |
+| Manual quick-add | ✅ Production ready | |
+| Daily dashboard (ring, macros, water) | ✅ Production ready | |
+| Meal history | ✅ Production ready | Per-date cache, instant revisit |
+| 7-day trend chart | ✅ Fixed + upgraded | Auth race condition resolved; fl_chart |
+| Consistency streak | ✅ Production ready | 60-day lookback |
+| Weekly summary screen | ✅ Production ready | Streak, calorie bars, macro breakdown |
+| Meal scoring (green/yellow/red) | ✅ Production ready | Per-meal, relative to daily goal |
+| Adaptive quick-log (known meals) | ✅ Production ready | Nightly backfill via pg_cron |
+| AI Coaching insights | ✅ Premium feature | Weekly cron, Gemini |
+| AI Meal Planner | ✅ Premium feature | With grocery list |
+| Social Challenges | ✅ Premium feature | Join free; create = premium |
+| Intermittent fasting timer | ✅ Production ready | Calorie gate, live countdown |
+| Net carbs mode | ✅ Production ready | Per-profile toggle |
+| Push notifications | ✅ Production ready | FCM + APNs, meal reminders |
+| RevenueCat subscription | ✅ Integrated | Requires live product IDs for App Store / Play Store |
+| PostHog analytics | ✅ Integrated | Disabled when `POSTHOG_API_KEY` is empty |
+| GDPR account deletion | ✅ Edge Function deployed | |
+
+### Known Deployment Blockers
+
+1. **RevenueCat public SDK keys** must be real `appl_...` / `goog_...` keys injected via `--dart-define` before submitting to App Store / Play Store. Test keys are fine for development.
+2. **Firebase `google-services.json` / `GoogleService-Info.plist`** must be replaced with production credentials before release.
+3. **`SubscriptionService._devPremiumOverride`** must remain `false` in all production builds. Consider gating it with a Dart `const bool.fromEnvironment` flag instead of a source-code toggle.
+4. **`.env` must not be committed** — it is correctly listed in `.gitignore` but verify Git history does not contain key material before pushing to a public remote.
+
 ### Documentation
 
 All project documentation lives in the `docs/` directory:
