@@ -169,10 +169,17 @@ final historyLogsProvider =
 /// Returns a list of 7 integers — calories consumed for each of the last 7
 /// local calendar days, oldest first (index 0 = 6 days ago, index 6 = today).
 /// Days with no logs contribute 0.
+///
+/// Waits for the Supabase auth session to be established before querying —
+/// the same pattern used by LogController — so this provider never resolves
+/// with an all-zeros result due to a cold-start race where currentUser is
+/// momentarily null while the session is being restored from storage.
 final weeklyCaloriesProvider = FutureProvider<List<int>>((ref) async {
+  final authState = await ref.watch(authStateProvider.future);
+  if (authState.session == null) return List.filled(7, 0);
+
   final client = Supabase.instance.client;
-  final userId = client.auth.currentUser?.id;
-  if (userId == null) return List.filled(7, 0);
+  final userId = authState.session!.user.id;
 
   final today = DateTime.now();
   // Fetch 7-day window in one query: from 6 days ago (local midnight UTC) to
@@ -211,9 +218,11 @@ final weeklyCaloriesProvider = FutureProvider<List<int>>((ref) async {
 
 /// Current logging streak in days. 0 when today has no logs yet.
 final loggingStreakProvider = FutureProvider<int>((ref) async {
+  final authState = await ref.watch(authStateProvider.future);
+  if (authState.session == null) return 0;
+
   final client = Supabase.instance.client;
-  final userId = client.auth.currentUser?.id;
-  if (userId == null) return 0;
+  final userId = authState.session!.user.id;
 
   final today = DateTime.now();
   final cutoff =
@@ -273,9 +282,11 @@ class DayStats {
 /// Returns daily stats for the last 7 local calendar days, oldest first.
 /// Days with no logs contribute a zero DayStats entry.
 final weeklyFullStatsProvider = FutureProvider<List<DayStats>>((ref) async {
+  final authState = await ref.watch(authStateProvider.future);
+  if (authState.session == null) return _emptyWeek();
+
   final client = Supabase.instance.client;
-  final userId = client.auth.currentUser?.id;
-  if (userId == null) return _emptyWeek();
+  final userId = authState.session!.user.id;
 
   final today = DateTime.now();
   final windowStart =
@@ -292,10 +303,13 @@ final weeklyFullStatsProvider = FutureProvider<List<DayStats>>((ref) async {
       .lt('logged_at', windowEnd.toIso8601String());
 
   // Accumulate totals per local calendar day.
+  // Keys are zero-padded (yyyy-MM-dd) to prevent month/day boundary mismatches
+  // where e.g. Jan 5 produces "2026-1-5" instead of "2026-01-05".
   final buckets = <String, DayStats>{};
   for (final row in (rows as List<dynamic>)) {
     final dt = DateTime.parse(row['logged_at'] as String).toLocal();
-    final key = '${dt.year}-${dt.month}-${dt.day}';
+    final key =
+        '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
     final existing = buckets[key];
     final kcal = (row['total_calories'] as num?)?.toInt() ?? 0;
     final p = (row['total_protein'] as num?)?.toDouble() ?? 0;
@@ -314,7 +328,8 @@ final weeklyFullStatsProvider = FutureProvider<List<DayStats>>((ref) async {
   // Build ordered list for the 7-day window, filling gaps with zero entries.
   return List.generate(7, (i) {
     final d = DateTime(today.year, today.month, today.day - (6 - i));
-    final key = '${d.year}-${d.month}-${d.day}';
+    final key =
+        '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
     return buckets[key] ??
         DayStats(
             date: d,
