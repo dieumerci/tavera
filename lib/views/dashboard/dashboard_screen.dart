@@ -215,6 +215,26 @@ class DashboardScreen extends ConsumerWidget {
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 20)),
 
+            // ── Phase 3: Calorie Banking ────────────────────────────────────
+            // Only shown when we have actual weekly data (any day logged).
+            SliverToBoxAdapter(
+              child: weeklyCaloriesAsync.maybeWhen(
+                data: (weeklyCalories) {
+                  if (!weeklyCalories.any((v) => v > 0)) {
+                    return const SizedBox.shrink();
+                  }
+                  return Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                    child: _CalorieBankCard(
+                      weeklyCalories: weeklyCalories,
+                      dailyGoal: calorieGoal,
+                    ),
+                  );
+                },
+                orElse: () => const SizedBox.shrink(),
+              ),
+            ),
+
             // ── Phase 3: Consistency streak ─────────────────────────────────
             if (streak > 0) ...[
               SliverToBoxAdapter(
@@ -617,6 +637,97 @@ class _WeeklyTrendSkeleton extends StatelessWidget {
                       ))
                   .toList(),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Calorie Bank card ────────────────────────────────────────────────────────
+//
+// Shows weekly calorie budget vs. total consumed so users can see whether they
+// have "calories banked" (surplus budget) or are over for the week.
+//
+// Budget  = dailyGoal × 7
+// Spent   = sum of weeklyCalories (7 values, oldest → newest)
+// Banked  = Budget − Spent  (positive = under budget, negative = over)
+//
+// The progress bar fills from left to right as calories are consumed.
+// It turns red only when the user has exceeded 100 % of the weekly budget.
+
+class _CalorieBankCard extends StatelessWidget {
+  final List<int> weeklyCalories; // 7 values
+  final int dailyGoal;
+
+  const _CalorieBankCard({
+    required this.weeklyCalories,
+    required this.dailyGoal,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final budget = dailyGoal * 7;
+    final spent = weeklyCalories.fold<int>(0, (s, v) => s + v);
+    final banked = budget - spent;
+    final ratio = budget > 0 ? (spent / budget).clamp(0.0, 1.0) : 0.0;
+    final isOver = spent > budget;
+    final barColor = isOver ? AppColors.danger : AppColors.accent;
+    final bankedLabel = isOver
+        ? '${(-banked).toString()} kcal over'
+        : '${banked.toString()} kcal banked';
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Weekly budget', style: AppTextStyles.labelLarge),
+              Text(
+                bankedLabel,
+                style: AppTextStyles.caption.copyWith(
+                  color: isOver ? AppColors.danger : AppColors.accent,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          // Progress bar
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              value: ratio,
+              minHeight: 8,
+              backgroundColor: AppColors.card,
+              valueColor: AlwaysStoppedAnimation<Color>(barColor),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '$spent kcal consumed',
+                style: AppTextStyles.caption.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              Text(
+                '$budget kcal budget',
+                style: AppTextStyles.caption.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
           ),
         ],
       ),
