@@ -25,6 +25,9 @@ class MealLog {
   /// Sum of dietary fibre across all items (grams).
   /// Null for logs created before migration 008 (pre net-carbs support).
   final double? totalFiber;
+  /// Optional after-meal rating captured by the Mood-Energy engine (Phase 3).
+  /// Keys: 'energy' (1–5), 'mood' (1–5). Null when the user has not rated.
+  final Map<String, int>? feeling;
 
   const MealLog({
     required this.id,
@@ -37,6 +40,7 @@ class MealLog {
     this.totalCarbs,
     this.totalFat,
     this.totalFiber,
+    this.feeling,
   });
 
   /// Score relative to [calorieGoal] (daily target, not per-meal allocation).
@@ -74,6 +78,8 @@ class MealLog {
         totalCarbs: (map['total_carbs'] as num?)?.toDouble(),
         totalFat: (map['total_fat'] as num?)?.toDouble(),
         totalFiber: (map['total_fiber'] as num?)?.toDouble(),
+        feeling: (map['feeling'] as Map<String, dynamic>?)
+            ?.map((k, v) => MapEntry(k, (v as num).toInt())),
       );
 
   Map<String, dynamic> toMap() => {
@@ -87,5 +93,6 @@ class MealLog {
         'total_carbs': totalCarbs,
         'total_fat': totalFat,
         'total_fiber': totalFiber,
+        if (feeling != null) 'feeling': feeling,
       };
 }
