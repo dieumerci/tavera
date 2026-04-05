@@ -1,7 +1,7 @@
 # TAVERA — Product Roadmap & Development Checklist
 
 **Document Version:** 2.0
-**Last Updated:** April 2, 2026
+**Last Updated:** April 5, 2026
 **Status:** Phase 1 ✅ Complete · Phase 2 ✅ Complete · Phase 3 🔄 In Progress
 **Author:** Dee (Founder)
 
@@ -397,8 +397,8 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 - [ ] Implement `InstacartDeliveryService` and `AmazonFreshDeliveryService` grocery integrations
 
 ### Food Label Scanner _(Priority 5 — Medium effort, Medium impact)_
-- [ ] Add "Scan nutrition label" option to `AddFoodSheet` alongside existing barcode scan
-- [ ] Capture photo of nutrition facts panel; send to Edge Function for OCR extraction
+- ✅ Add "Scan nutrition label" option to `AddFoodSheet` alongside existing barcode scan
+- ✅ Capture photo of nutrition facts panel; send to Edge Function for OCR extraction
 - [ ] Parse all nutrients from label: calories, total fat, saturated fat, cholesterol, sodium, carbs, fiber, sugars, protein, vitamins
 - [ ] Pre-populate review sheet with extracted values; allow portion size adjustment
 - [ ] Particularly valuable for foods absent from barcode databases (restaurant branded items, imported products)
@@ -412,7 +412,7 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 - [ ] Add medication log: name (dropdown of approved GLP-1 medications), dose, injection date/time, next dose reminder
 - [ ] Weekly protein sufficiency alert: if protein < 80% of target for 3+ consecutive days, trigger coaching insight
 - [ ] Plateau detection: if weight (optional input) hasn't changed in 3 weeks during rapid loss phase, surface coaching message
-- [ ] Nausea/side-effect log: optional after-meal feeling rating (1–5); feed into Mood-Energy engine
+- ✅ Nausea/side-effect log: optional after-meal feeling rating (1–5); feed into Mood-Energy engine
 - [ ] GLP-1 coach prompt variant in `generate-coaching` Edge Function: different advice for medication-assisted users
 - [ ] Gate behind premium
 
@@ -420,8 +420,8 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 
 > **Unique differentiator:** No competitor connects food intake to how users feel. This creates a data moat — the more users engage, the more personalised the insights become, and the data cannot be replicated.
 
-- [ ] Add optional after-meal rating prompt (dismissable): Energy (1–5), Mood (1–5), Digestive Comfort (1–5)
-- [ ] Store ratings in `meal_logs.feeling` jsonb column (migration required)
+- ✅ Add optional after-meal rating prompt (dismissable): Energy (1–5), Mood (1–5)
+- ✅ Store ratings in `meal_logs.feeling` jsonb column (migration 011 applied)
 - [ ] After 14 days of data: run correlation analysis in `generate-coaching` Edge Function — identify food patterns that correlate with low energy, poor mood, digestive discomfort
 - [ ] Surface insights: "High-carb lunches correlate with 30% lower afternoon energy for you", "Your protein-rich breakfasts are linked to better mood scores"
 - [ ] Build a "How you felt" chart on the weekly summary screen (Energy trend line overlaid on calorie bars)
@@ -431,8 +431,8 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 
 > **Psychological innovation:** Reframes calorie tracking from punishment to saving. Users who exceed daily targets feel guilty and abandon tracking. Banking treats unused calories as savings for special occasions.
 
-- [ ] Add weekly calorie budget view to dashboard (current week total vs. 7× daily goal)
-- [ ] Show "calorie bank balance": sum of daily deficits from Mon–today (saved calories)
+- ✅ Add weekly calorie budget view to dashboard (current week total vs. 7× daily goal)
+- ✅ Show "calorie bank balance": weekly budget minus total consumed; over-budget shown in red
 - [ ] Allow user to tag upcoming days as "planned indulgence" — bank balance can be pre-allocated
 - [ ] Smart warning when bank balance > 20% of weekly goal: gentle "make sure you're eating enough" message
 - [ ] Celebration when user ends the week within 5% of weekly budget (even if some days were over)
