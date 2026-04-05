@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -39,7 +40,9 @@ class DashboardScreen extends ConsumerWidget {
     final activeFast = ref.watch(fastingControllerProvider).valueOrNull;
     final knownMeals = ref.watch(topKnownMealsProvider);
     final unreadInsights = ref.watch(unreadInsightCountProvider);
-    final weeklyCalories = ref.watch(weeklyCaloriesProvider).valueOrNull;
+    // Watch the full async state so we can render a skeleton while loading
+    // instead of silently hiding the card when auth hasn't resolved yet.
+    final weeklyCaloriesAsync = ref.watch(weeklyCaloriesProvider);
     final activeChallenges = ref.watch(myChallengesProvider).valueOrNull
             ?.where((c) => c.isActive)
             .toList() ??
@@ -193,19 +196,24 @@ class DashboardScreen extends ConsumerWidget {
             const SliverToBoxAdapter(child: SizedBox(height: 16)),
 
             // ── Weekly calorie trend ────────────────────────────────────────
-            if (weeklyCalories != null && weeklyCalories.any((v) => v > 0)) ...[
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: _WeeklyTrendCard(
-                    calories: weeklyCalories,
-                    goal: calorieGoal,
-                  ),
+            // Always render the card placeholder so users see immediate
+            // feedback: skeleton while loading, chart once auth + data arrive.
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: weeklyCaloriesAsync.when(
+                  loading: () => const _WeeklyTrendSkeleton(),
+                  error: (_, __) => const SizedBox.shrink(),
+                  data: (weeklyCalories) => weeklyCalories.any((v) => v > 0)
+                      ? _WeeklyTrendCard(
+                          calories: weeklyCalories,
+                          goal: calorieGoal,
+                        )
+                      : const SizedBox.shrink(),
                 ),
               ),
-              const SliverToBoxAdapter(child: SizedBox(height: 20)),
-            ] else
-              const SliverToBoxAdapter(child: SizedBox(height: 20)),
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 20)),
 
             // ── Phase 3: Consistency streak ─────────────────────────────────
             if (streak > 0) ...[
@@ -383,6 +391,8 @@ class DashboardScreen extends ConsumerWidget {
 
 // ─── Weekly calorie trend ─────────────────────────────────────────────────────
 
+/// Dark-themed bar chart showing calorie intake for the last 7 days.
+/// Powered by fl_chart for smooth animations, touch tooltips, and a goal line.
 class _WeeklyTrendCard extends StatelessWidget {
   final List<int> calories; // 7 values, oldest → newest
   final int goal;
@@ -395,8 +405,10 @@ class _WeeklyTrendCard extends StatelessWidget {
       return DateFormat('E').format(d)[0]; // M T W T F S S
     });
 
+    final maxY = goal > 0 ? goal * 1.35 : 2600.0;
+
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
@@ -416,59 +428,194 @@ class _WeeklyTrendCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           SizedBox(
-            height: 72,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: List.generate(7, (i) {
-                final kcal = calories[i];
-                final frac = goal > 0
-                    ? (kcal / goal).clamp(0.0, 1.0)
-                    : 0.0;
-                final isToday = i == 6;
-                final Color barColor = kcal == 0
-                    ? AppColors.border
-                    : kcal <= goal
-                        ? AppColors.accent
-                        : AppColors.danger;
-
-                return Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 3),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        // Bar
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 400),
-                          curve: Curves.easeOut,
-                          height: math.max(4, frac * 52),
-                          decoration: BoxDecoration(
-                            color: barColor
-                                .withValues(alpha: isToday ? 1.0 : 0.65),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
+            height: 110,
+            child: BarChart(
+              BarChartData(
+                backgroundColor: Colors.transparent,
+                maxY: maxY,
+                minY: 0,
+                // Touch tooltip shows calorie value on tap
+                barTouchData: BarTouchData(
+                  enabled: true,
+                  touchTooltipData: BarTouchTooltipData(
+                    getTooltipColor: (_) => AppColors.card,
+                    tooltipRoundedRadius: 8,
+                    tooltipPadding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 4),
+                    getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                      final kcal = calories[groupIndex];
+                      if (kcal == 0) return null;
+                      return BarTooltipItem(
+                        '$kcal kcal',
+                        AppTextStyles.caption.copyWith(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 11,
                         ),
-                        const SizedBox(height: 6),
-                        // Day label
-                        Text(
-                          dayLabels[i],
-                          style: AppTextStyles.caption.copyWith(
-                            fontSize: 10,
-                            color: isToday
-                                ? AppColors.accent
-                                : AppColors.textTertiary,
-                            fontWeight: isToday
-                                ? FontWeight.w700
-                                : FontWeight.w400,
+                      );
+                    },
+                  ),
+                ),
+                titlesData: FlTitlesData(
+                  show: true,
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 22,
+                      getTitlesWidget: (value, meta) {
+                        final i = value.toInt();
+                        if (i < 0 || i >= 7) return const SizedBox.shrink();
+                        final isToday = i == 6;
+                        return SideTitleWidget(
+                          meta: meta,
+                          child: Text(
+                            dayLabels[i],
+                            style: AppTextStyles.caption.copyWith(
+                              fontSize: 10,
+                              color: isToday
+                                  ? AppColors.accent
+                                  : AppColors.textTertiary,
+                              fontWeight: isToday
+                                  ? FontWeight.w700
+                                  : FontWeight.w400,
+                            ),
                           ),
-                        ),
-                      ],
+                        );
+                      },
                     ),
                   ),
-                );
-              }),
+                  leftTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false)),
+                  topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false)),
+                ),
+                // Dashed horizontal goal line
+                gridData: FlGridData(
+                  show: goal > 0,
+                  drawVerticalLine: false,
+                  drawHorizontalLine: true,
+                  horizontalInterval: goal.toDouble(),
+                  getDrawingHorizontalLine: (_) => FlLine(
+                    color: AppColors.accent.withValues(alpha: 0.30),
+                    strokeWidth: 1,
+                    dashArray: [4, 4],
+                  ),
+                ),
+                borderData: FlBorderData(show: false),
+                barGroups: List.generate(7, (i) {
+                  final kcal = calories[i];
+                  final isToday = i == 6;
+                  final Color barColor = kcal == 0
+                      ? AppColors.border
+                      : kcal <= goal
+                          ? AppColors.accent
+                          : AppColors.danger;
+                  return BarChartGroupData(
+                    x: i,
+                    barRods: [
+                      BarChartRodData(
+                        toY: kcal.toDouble(),
+                        color:
+                            barColor.withValues(alpha: isToday ? 1.0 : 0.65),
+                        width: 26,
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(5),
+                        ),
+                      ),
+                    ],
+                  );
+                }),
+              ),
+              duration: const Duration(milliseconds: 400),
+              curve: Curves.easeOut,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Weekly trend skeleton ────────────────────────────────────────────────────
+
+/// Placeholder rendered while weeklyCaloriesProvider is loading.
+/// Matches the card's dimensions so the layout doesn't shift when data arrives.
+class _WeeklyTrendSkeleton extends StatelessWidget {
+  const _WeeklyTrendSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    const shimmer = AppColors.card;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header row placeholders
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                width: 82,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: shimmer,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              Container(
+                width: 64,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: shimmer,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          // Bar skeletons — varying heights to look natural
+          SizedBox(
+            height: 110,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: const [56.0, 72.0, 40.0, 80.0, 52.0, 88.0, 64.0]
+                  .map((h) => Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              Container(
+                                height: h * 0.78,
+                                decoration: BoxDecoration(
+                                  color: shimmer,
+                                  borderRadius: BorderRadius.circular(5),
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Container(
+                                width: 10,
+                                height: 10,
+                                decoration: BoxDecoration(
+                                  color: shimmer,
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ))
+                  .toList(),
             ),
           ),
         ],
