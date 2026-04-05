@@ -49,20 +49,33 @@ class SubscriptionService {
 
   /// Returns true when the current user has an active premium subscription.
   ///
-  /// Synchronous — safe to call from build(). Uses the cached RevenueCat
-  /// status via [revenueCatPremiumProvider]; falls back to the DB tier while
-  /// the async fetch is in flight.
+  /// Synchronous — safe to call from build(). Decision order:
+  ///   1. Dev override — short-circuits all checks when set to true.
+  ///   2. DB profile tier — checked first so that server-granted premium
+  ///      (test accounts, SQL upgrades, RevenueCat webhook) works immediately
+  ///      without depending on the SDK being correctly configured.
+  ///   3. RevenueCat live entitlement — authoritative signal for real IAP
+  ///      subscriptions. Checked second so a live subscriber whose webhook
+  ///      hasn't synced yet still gets access.
+  ///   4. Defaults to false when neither source confirms premium.
+  ///
+  /// Checking DB first also ensures the test account (preview@tavera.app)
+  /// works regardless of RevenueCat SDK key configuration, since the test
+  /// project intentionally uses SQL-granted tiers rather than real IAP.
   static bool isPremium(WidgetRef ref) {
     if (_devPremiumOverride) return true;
 
-    // RevenueCat entitlement (cached; null while loading → fall through)
-    final rcStatus = ref.watch(revenueCatPremiumProvider).valueOrNull;
-    if (rcStatus != null) return rcStatus;
-
-    // DB fallback — ref.watch so the widget rebuilds when the profile stream
-    // emits a new tier (e.g. after an external SQL update or webhook).
+    // DB profile — authoritative for SQL-granted tiers & test accounts.
+    // ref.watch ensures the widget rebuilds when the Realtime stream emits
+    // a new tier (e.g. after a webhook updates subscription_tier).
     final profile = ref.watch(userProfileProvider).valueOrNull;
-    return _dbPremium(profile);
+    if (_dbPremium(profile)) return true;
+
+    // RevenueCat — live entitlement for real IAP subscribers.
+    // valueOrNull is null while the async fetch is in flight — we fall
+    // through to the false default rather than incorrectly blocking access.
+    final rcStatus = ref.watch(revenueCatPremiumProvider).valueOrNull;
+    return rcStatus ?? false;
   }
 
   /// Async variant — awaits RevenueCat before returning. Use in one-off
