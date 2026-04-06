@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../controllers/auth_controller.dart';
+import '../../views/auth/intro_screen.dart';
 import '../../views/auth/onboarding_screen.dart';
 import '../../views/barcode/barcode_screen.dart';
+import '../../views/legal/terms_screen.dart';
 import '../../views/camera/camera_screen.dart';
 import '../../views/challenges/challenge_detail_screen.dart';
 import '../../views/challenges/challenges_screen.dart';
@@ -32,20 +34,38 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: '/',
     refreshListenable: notifier,
-    redirect: (context, state) {
+    redirect: (context, state) async {
       final authAsync = ref.read(authStateProvider);
 
-      // While auth is loading, don't redirect
+      // While auth is loading, don't redirect.
       if (authAsync.isLoading) return null;
 
       final isAuthenticated = authAsync.valueOrNull?.session != null;
-      final atOnboarding = state.matchedLocation == '/onboarding';
+      final loc = state.matchedLocation;
+      final atOnboarding = loc == '/onboarding';
+      final atIntro = loc == '/intro';
 
-      if (!isAuthenticated && !atOnboarding) return '/onboarding';
-      if (isAuthenticated && atOnboarding) return '/';
+      // Authenticated users always go straight to the app.
+      if (isAuthenticated && (atOnboarding || atIntro)) return '/';
+
+      // Unauthenticated — check whether the intro has been seen yet.
+      if (!isAuthenticated && !atOnboarding && !atIntro) {
+        final seen = await hasSeenIntro();
+        return seen ? '/onboarding' : '/intro';
+      }
+
       return null;
     },
     routes: [
+      // ── First-launch intro (shown once, before auth) ─────────────────────
+      GoRoute(
+        path: '/intro',
+        pageBuilder: (context, state) => _fadeTransition(
+          state,
+          const IntroScreen(),
+        ),
+      ),
+
       // ── Unauthenticated ──────────────────────────────────────────────────
       GoRoute(
         path: '/onboarding',
@@ -166,6 +186,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => _slideTransition(
           state,
           const WeeklySummaryScreen(),
+        ),
+      ),
+
+      // Terms of Service + Privacy Policy — accessible from auth screen footer
+      GoRoute(
+        path: '/terms',
+        pageBuilder: (context, state) => _slideTransition(
+          state,
+          const TermsScreen(),
         ),
       ),
 

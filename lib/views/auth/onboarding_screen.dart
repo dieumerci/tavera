@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+
 import '../../controllers/auth_controller.dart';
 import '../../core/config/app_config.dart';
 import '../../core/theme/app_colors.dart';
@@ -10,6 +11,7 @@ import '../../core/theme/app_text_styles.dart';
 import '../../models/user_profile.dart';
 import '../../services/analytics_service.dart';
 import '../../services/haptic_service.dart';
+import '../../widgets/tavera_logo.dart';
 
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
@@ -408,11 +410,21 @@ class _AuthView extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 64),
+          const SizedBox(height: 52),
 
-          Text(
-            'tavera.',
-            style: AppTextStyles.displayLarge.copyWith(color: AppColors.accent),
+          // Brand mark + wordmark
+          Row(
+            children: [
+              const TaveraLogo(size: 52),
+              const SizedBox(width: 14),
+              Text(
+                'tavera.',
+                style: AppTextStyles.displayLarge.copyWith(
+                  color: AppColors.accent,
+                  letterSpacing: -1,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 10),
           Text(
@@ -517,7 +529,31 @@ class _AuthView extends StatelessWidget {
             ),
           ),
 
-          const SizedBox(height: 32),
+          const SizedBox(height: 24),
+
+          // Terms & Privacy footer
+          Center(
+            child: GestureDetector(
+              onTap: () {
+                HapticService.selection();
+                context.push('/terms');
+              },
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                child: Text(
+                  'Terms of Service · Privacy Policy',
+                  style: AppTextStyles.caption.copyWith(
+                    color: AppColors.textTertiary,
+                    decoration: TextDecoration.underline,
+                    decorationColor: AppColors.textTertiary,
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
         ],
       ),
     );

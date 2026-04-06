@@ -48,6 +48,14 @@ dependencies:
   # weekly summary. Replaces the hand-rolled AnimatedContainer bars.
   fl_chart: ^0.70.0
 
+  # Onboarding swipe intro — used for first-launch feature walkthrough.
+  # Provides page transitions, dot indicators, and skip/done buttons out of box.
+  introduction_screen: ^3.1.1
+
+  # Persistent local key-value store — used to track whether the intro has been
+  # shown so we never show it twice.
+  shared_preferences: ^2.3.3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
