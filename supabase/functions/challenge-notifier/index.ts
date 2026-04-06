@@ -3,6 +3,8 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 // @ts-ignore
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
+const GEMINI_MODEL = "gemini-2.0-flash-002";
+
 // ─── challenge-notifier ───────────────────────────────────────────────────────
 //
 // Processes challenge events and updates participant scores / ranks.
@@ -35,6 +37,50 @@ interface RankChange {
   userId: string;
   oldRank: number;
   newRank: number;
+}
+
+// ─── Motivational message generator ──────────────────────────────────────────
+// Generates a short, progress-aware motivational message using Gemini.
+// Returns null if the API key is absent or the call fails — callers treat
+// a missing message as a non-error (it's a nice-to-have, not critical).
+async function generateMotivationalMessage(context: {
+  challengeTitle: string;
+  challengeType: string;
+  newScore: number;
+  totalParticipants: number;
+  newRank: number | null;
+  rankImproved: boolean;
+}): Promise<string | null> {
+  const apiKey = Deno.env.get("GEMINI_API_KEY");
+  if (!apiKey) return null;
+
+  const rankClause = context.newRank
+    ? ` You are ranked #${context.newRank} of ${context.totalParticipants} participants${context.rankImproved ? " — you just moved up!" : ""}.`
+    : "";
+
+  const prompt = `You are an encouraging fitness coach. A user just logged a meal in their "${context.challengeTitle}" challenge (type: ${context.challengeType}). Their score is now ${context.newScore}.${rankClause}
+
+Write one short, warm, progress-aware motivational message (max 120 characters). Be specific to the challenge. No emojis. No quotes. Plain text only.`;
+
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.8, maxOutputTokens: 80 },
+        }),
+      }
+    );
+    if (!res.ok) return null;
+    const json = await res.json();
+    const text: string = json.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+    return text.trim().slice(0, 120) || null;
+  } catch {
+    return null;
+  }
 }
 
 Deno.serve(async (req: Request) => {
@@ -184,8 +230,43 @@ Deno.serve(async (req: Request) => {
       updatedChallengeIds.push(challenge.id);
     }
 
+    // ── 6. Generate a motivational message for the user's primary challenge ──
+    // Uses the last-processed challenge for context (most-recently scored).
+    // Fire-and-forget style: we await it before returning but don't error on failure.
+    let motivationalMessage: string | null = null;
+    if (updatedChallengeIds.length > 0) {
+      const primaryChallenge = challenges[challenges.length - 1];
+      const primaryParticipation = participations.find(
+        (p: { challenge_id: string }) => p.challenge_id === primaryChallenge.id
+      );
+      const primaryRankChange = rankChanges.find(
+        (rc) => rc.challengeId === primaryChallenge.id
+      );
+
+      // Fetch current participant count for rank context.
+      const { count: participantCount } = await supabase
+        .from("challenge_participants")
+        .select("id", { count: "exact", head: true })
+        .eq("challenge_id", primaryChallenge.id);
+
+      motivationalMessage = await generateMotivationalMessage({
+        challengeTitle:    primaryChallenge.title ?? primaryChallenge.type,
+        challengeType:     primaryChallenge.type,
+        newScore:          (primaryParticipation?.score ?? 0) + (rankChanges.length > 0 ? 1 : 0),
+        totalParticipants: participantCount ?? 1,
+        newRank:           primaryRankChange?.newRank ?? primaryParticipation?.rank ?? null,
+        rankImproved:      primaryRankChange
+          ? primaryRankChange.newRank < primaryRankChange.oldRank
+          : false,
+      });
+    }
+
     return new Response(
-      JSON.stringify({ updated_challenges: updatedChallengeIds, rank_changes: rankChanges }),
+      JSON.stringify({
+        updated_challenges: updatedChallengeIds,
+        rank_changes: rankChanges,
+        motivational_message: motivationalMessage,
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {

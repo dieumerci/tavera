@@ -124,7 +124,6 @@ class MealPlanController extends AsyncNotifier<MealPlanState> {
     );
 
     try {
-      await client.auth.getSession();
       await client.functions.invoke(
         'generate-meal-plan',
         body: {'user_id': userId, 'week_start': mondayStr},
@@ -161,7 +160,6 @@ class MealPlanController extends AsyncNotifier<MealPlanState> {
     );
 
     try {
-      await client.auth.getSession();
       await client.functions.invoke(
         'generate-meal-plan',
         body: {'user_id': userId, 'week_start': mondayStr, 'day_index': dayIndex},
@@ -201,7 +199,6 @@ class MealPlanController extends AsyncNotifier<MealPlanState> {
     );
 
     try {
-      await client.auth.getSession();
       final result = await client.functions.invoke(
         'swap-planned-meal',
         body: {

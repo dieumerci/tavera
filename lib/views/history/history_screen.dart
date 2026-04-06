@@ -156,6 +156,9 @@ class _LogBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final netCarbsMode =
+        ref.watch(userProfileProvider).valueOrNull?.netCarbsMode ?? false;
+
     final totalCalories =
         logs.fold(0, (s, l) => s + l.totalCalories);
     final totalProtein =
@@ -166,9 +169,6 @@ class _LogBody extends ConsumerWidget {
         logs.fold(0.0, (s, l) => s + (l.totalFiber ?? 0));
     final totalFat =
         logs.fold(0.0, (s, l) => s + (l.totalFat ?? 0));
-
-    final netCarbsMode =
-        ref.watch(userProfileProvider).valueOrNull?.netCarbsMode ?? false;
     final totalCarbs = _netCarbs(rawCarbs, totalFiber, netCarbsMode);
     final carbLabel = netCarbsMode ? 'Net Carbs' : 'Carbs';
 
@@ -295,7 +295,7 @@ class _SummaryCard extends StatelessWidget {
 
           const SizedBox(height: 16),
 
-          // Macro breakdown bars
+          // Macro breakdown bars — goals derived from the user's calorie target.
           if (totalProtein > 0 || totalCarbs > 0 || totalFat > 0) ...[
             Row(
               children: [
@@ -303,6 +303,7 @@ class _SummaryCard extends StatelessWidget {
                   child: _MacroBar(
                     label: 'Protein',
                     value: totalProtein,
+                    goal: calorieGoal * 0.30 / 4,
                     color: const Color(0xFF4ECDC4),
                   ),
                 ),
@@ -311,6 +312,7 @@ class _SummaryCard extends StatelessWidget {
                   child: _MacroBar(
                     label: carbLabel,
                     value: totalCarbs,
+                    goal: calorieGoal * 0.50 / 4,
                     color: const Color(0xFFFFD166),
                   ),
                 ),
@@ -319,6 +321,7 @@ class _SummaryCard extends StatelessWidget {
                   child: _MacroBar(
                     label: 'Fat',
                     value: totalFat,
+                    goal: calorieGoal * 0.20 / 9,
                     color: const Color(0xFFFF6B6B),
                   ),
                 ),
@@ -341,9 +344,14 @@ class _SummaryCard extends StatelessWidget {
 class _MacroBar extends StatelessWidget {
   final String label;
   final double value;
+  final double goal;
   final Color color;
-  const _MacroBar(
-      {required this.label, required this.value, required this.color});
+  const _MacroBar({
+    required this.label,
+    required this.value,
+    required this.goal,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -367,14 +375,7 @@ class _MacroBar extends StatelessWidget {
         ClipRRect(
           borderRadius: BorderRadius.circular(3),
           child: LinearProgressIndicator(
-            // Rough daily targets: protein 150g, carbs 250g, fat 65g
-            value: (value /
-                    (label == 'Protein'
-                        ? 150
-                        : label.contains('Carb')
-                            ? 250
-                            : 65))
-                .clamp(0.0, 1.0),
+            value: goal > 0 ? (value / goal).clamp(0.0, 1.0) : 0.0,
             backgroundColor: AppColors.border,
             valueColor: AlwaysStoppedAnimation<Color>(color),
             minHeight: 4,
@@ -545,9 +546,9 @@ class MealDetailSheet extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final timeLabel = DateFormat('EEE, MMM d · h:mm a').format(log.loggedAt);
     final netCarbsMode =
         ref.watch(userProfileProvider).valueOrNull?.netCarbsMode ?? false;
+    final timeLabel = DateFormat('EEE, MMM d · h:mm a').format(log.loggedAt);
     final displayCarbs = _netCarbs(
       log.totalCarbs ?? 0,
       log.totalFiber,

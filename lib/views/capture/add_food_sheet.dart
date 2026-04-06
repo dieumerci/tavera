@@ -15,6 +15,7 @@ import '../../services/haptic_service.dart';
 import '../../widgets/sheet_handle.dart';
 import '../paywall/paywall_sheet.dart';
 import '../quick_add/quick_add_sheet.dart';
+import '../review/mood_rating_sheet.dart';
 import '../review/review_sheet.dart';
 
 // ─── Add Food Sheet ───────────────────────────────────────────────────────────
@@ -184,12 +185,68 @@ class _AddFoodSheetState extends ConsumerState<AddFoodSheet> {
       backgroundColor: Colors.transparent,
       builder: (_) => const ReviewSheet(),
     ).then((_) {
-      final wasSaved =
-          ref.read(mealControllerProvider).step == MealProcessingStep.saved;
+      if (!mounted) return;
+      final mealState = ref.read(mealControllerProvider);
+      final wasSaved = mealState.step == MealProcessingStep.saved;
+      final savedLogId = mealState.savedLogId;
+
+      // Reset controller state before showing the mood sheet so that
+      // any subsequent captures start clean (but the savedLogId is already
+      // captured in the local variable above).
       ref.read(mealControllerProvider.notifier).reset();
+
       if (wasSaved) {
         HapticService.medium();
+        if (savedLogId != null) {
+          // Brief post-frame delay so the review sheet has fully popped
+          // from the navigator before we push the mood sheet on top.
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            showModalBottomSheet<void>(
+              context: context,
+              isScrollControlled: true,
+              backgroundColor: Colors.transparent,
+              builder: (_) => MoodRatingSheet(mealLogId: savedLogId),
+            );
+          });
+        }
       }
+    });
+  }
+
+  // ── Scan nutrition label ─────────────────────────────────────────────────────
+
+  Future<void> _onScanLabel() async {
+    HapticService.selection();
+    if (!_canLog()) {
+      _showPaywall();
+      return;
+    }
+    if (!await _checkFastingGate()) return;
+    if (!mounted) return;
+
+    setState(() => _picking = true);
+
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source: ImageSource.camera,
+      maxWidth: 2048,
+      maxHeight: 2048,
+      imageQuality: 95,
+    );
+
+    if (!mounted) return;
+    setState(() => _picking = false);
+
+    if (picked == null) return;
+
+    Navigator.of(context).pop();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      HapticService.medium();
+      ref.read(mealControllerProvider.notifier).analyseLabel(File(picked.path));
+      _showReviewSheet();
     });
   }
 
@@ -277,6 +334,14 @@ class _AddFoodSheetState extends ConsumerState<AddFoodSheet> {
                     ),
                   )
                 : null,
+          ),
+          const SizedBox(height: 10),
+          _Option(
+            icon: Icons.document_scanner_rounded,
+            iconColor: const Color(0xFFCE93D8),
+            title: 'Scan Nutrition Label',
+            subtitle: 'Read the facts panel with AI',
+            onTap: _picking ? null : _onScanLabel,
           ),
           const SizedBox(height: 10),
           _Option(

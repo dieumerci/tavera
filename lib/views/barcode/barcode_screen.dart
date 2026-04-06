@@ -149,6 +149,15 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
     if (logged == true) {
       Navigator.of(context).pop(); // back to camera — chip already updated
     } else {
+      if (logged == false) {
+        // Sheet confirmed the save but it failed (not a user dismiss).
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to save meal. Check your connection and try again.'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
       await _resumeScanning();
     }
   }

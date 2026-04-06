@@ -12,4 +12,11 @@ class AppConfig {
 
   // Pricing
   static const premiumMonthlyPrice = '\$4.99/month';
+
+  // Defaults — single source of truth used by models, controllers, and UI.
+  static const defaultCalorieGoal = 2000;
+  static const defaultWaterGoalMl = 2000;
+
+  /// Preset calorie targets shown in the goal-editor sheet and onboarding.
+  static const caloriePresets = [1500, 1800, 2000, 2500, 3000];
 }

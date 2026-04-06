@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/config/app_config.dart';
 import '../models/user_profile.dart';
 
 /// Raw Supabase auth state stream.
@@ -58,7 +59,7 @@ class AuthController extends AsyncNotifier<void> {
     String email,
     String password,
     String name, {
-    int calorieGoal = 2000,
+    int calorieGoal = AppConfig.defaultCalorieGoal,
   }) async {
     state = const AsyncLoading();
     try {

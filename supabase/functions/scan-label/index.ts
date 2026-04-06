@@ -2,9 +2,16 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 // @ts-ignore
 import { createClient } from "jsr:@supabase/supabase-js@2";
-// verify_jwt: false — auth enforced at the Supabase Storage layer.
-// This function fetches the image, base64-encodes it, and sends it to
-// Google Gemini 1.5 Flash for food recognition. No JWT check needed here.
+
+// scan-label — Nutrition Facts label reader
+//
+// Accepts a base64-encoded image of a nutrition facts panel.
+// Uses Gemini vision to read the printed values directly (not estimate).
+// Returns a single FoodItem-compatible JSON object.
+//
+// Called by the Flutter client after the user photographs or selects a
+// nutrition label. The image is sent as base64 to avoid a Storage upload
+// round-trip (labels don't need to be persisted).
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,47 +19,34 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-// Gemini 1.5 Flash: chosen for cost (~66× cheaper than GPT-4o) while
-// delivering comparable food-recognition accuracy for well-lit meal photos.
 const GEMINI_MODEL = "gemini-2.0-flash-002";
 
-const SYSTEM_PROMPT = `You are a precise nutrition analyst. When given a meal image, identify every visible food item and return accurate calorie and macro estimates.
+const SYSTEM_PROMPT = `You are a nutrition label reader. Extract the nutrition information exactly as printed on the label.
 
-Return ONLY a valid JSON object — no markdown fences, no explanation, no trailing text.
+Return ONLY a valid JSON object — no markdown fences, no explanation.
 
 JSON structure:
 {
-  "items": [
-    {
-      "name": "string (common food name)",
-      "portion_size": number,
-      "portion_unit": "g | ml | piece | cup | slice | tbsp",
-      "calories": number (integer),
-      "protein": number (grams, 1dp),
-      "carbs": number (grams, 1dp),
-      "fiber": number (grams, 1dp),
-      "fat": number (grams, 1dp),
-      "fiber_g": number (grams, 1dp — dietary fibre only),
-      "confidence": number (0.0–1.0, your certainty about identification)
-    }
-  ],
-  "total_calories": number,
-  "total_protein": number,
-  "total_carbs": number,
-  "total_fat": number,
-  "total_fiber": number
+  "name": "string (product name from label, or generic description)",
+  "portion_size": number (serving size number from label),
+  "portion_unit": "g | ml | piece | cup | slice | tbsp",
+  "calories": number (integer — from 'Calories' or 'Energy' row, per serving),
+  "protein": number (grams, from 'Protein' row),
+  "carbs": number (grams, from 'Total Carbohydrate' or 'Carbohydrates' row),
+  "fiber": number (grams, from 'Dietary Fiber' row — 0 if not listed),
+  "fat": number (grams, from 'Total Fat' row),
+  "confidence": number (0.0–1.0, how clearly the label is readable)
 }
 
 Rules:
-- Use realistic portion sizes based on visual estimation
-- Calories and macros must be internally consistent (calories ≈ protein*4 + carbs*4 + fat*9)
-- fiber_g must be ≤ carbs for the same item (fibre is a subset of carbohydrates)
-- If you cannot identify food at all, return: {"items":[],"total_calories":0,"total_protein":0,"total_carbs":0,"total_fat":0,"total_fiber":0}
-- Do not invent items you cannot see`;
+- Read values exactly as printed — do not estimate or adjust
+- Use per-serving values, not per-100g (unless only per-100g is available)
+- If the label is unreadable or not a nutrition facts panel, return:
+  {"name":"Unknown","portion_size":0,"portion_unit":"g","calories":0,"protein":0,"carbs":0,"fiber":0,"fat":0,"confidence":0}
+- fiber must be ≤ carbs (fiber is a subset of carbohydrates)`;
 
 // ─── Gemini helper ────────────────────────────────────────────────────────────
-// Sends a multimodal request (text + optional inlineData image) to Gemini.
-// Retries up to 3 times on 429 (rate limit) with exponential backoff.
+
 async function callGemini(
   apiKey: string,
   parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }>,
@@ -70,7 +64,6 @@ async function callGemini(
       { method: "POST", headers: { "Content-Type": "application/json" }, body }
     );
 
-    // 429 = rate limit — back off and retry.
     if (res.status === 429 && attempt < maxAttempts - 1) {
       await new Promise((r) => setTimeout(r, (attempt + 1) * 2000));
       continue;
@@ -89,28 +82,8 @@ async function callGemini(
   throw new Error("Gemini rate limit: all retries exhausted");
 }
 
-// ─── Base64 image encoder ─────────────────────────────────────────────────────
-// Gemini's inlineData requires base64. Supabase Storage serves HTTPS URLs,
-// not gs:// URIs, so we fetch the bytes here and encode them.
-// Chunked to avoid btoa() stack overflow on images up to ~1MB.
-async function fetchImageAsBase64(url: string): Promise<{ base64: string; mimeType: string }> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Failed to fetch image (${res.status}): ${url}`);
-
-  const mimeType = res.headers.get("content-type") ?? "image/jpeg";
-  const buffer = await res.arrayBuffer();
-  const bytes = new Uint8Array(buffer);
-
-  let binary = "";
-  const chunkSize = 8192;
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-  }
-
-  return { base64: btoa(binary), mimeType };
-}
-
 // ─── Strip markdown fences ────────────────────────────────────────────────────
+
 function cleanJson(text: string): string {
   return text
     .replace(/^```json\s*/i, "")
@@ -120,24 +93,20 @@ function cleanJson(text: string): string {
 }
 
 // ─── Anonymised AI request logger ────────────────────────────────────────────
-// Fire-and-forget: errors are swallowed so logging never breaks the main path.
-function logAiRequest(
-  success: boolean,
-  latencyMs: number,
-  errorCode?: string
-): void {
+
+function logAiRequest(success: boolean, latencyMs: number, errorCode?: string): void {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const serviceKey  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!supabaseUrl || !serviceKey) return;
 
   const supabase = createClient(supabaseUrl, serviceKey);
   supabase.from("ai_request_logs").insert({
-    function_name: "analyse-meal",
+    function_name: "scan-label",
     model: GEMINI_MODEL,
     latency_ms: latencyMs,
     success,
     error_code: errorCode ?? null,
-  }).then(() => {/* fire-and-forget */}).catch(() => {/* swallow */});
+  }).then(() => {}).catch(() => {});
 }
 
 // ─── Handler ──────────────────────────────────────────────────────────────────
@@ -150,11 +119,11 @@ Deno.serve(async (req: Request) => {
   const t0 = Date.now();
 
   try {
-    const { image_url } = await req.json();
+    const { image_base64, mime_type } = await req.json();
 
-    if (!image_url || typeof image_url !== "string") {
+    if (!image_base64 || typeof image_base64 !== "string") {
       return new Response(
-        JSON.stringify({ error: "image_url (string) is required" }),
+        JSON.stringify({ error: "image_base64 (string) is required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -162,16 +131,15 @@ Deno.serve(async (req: Request) => {
     const geminiKey = Deno.env.get("GEMINI_API_KEY");
     if (!geminiKey) throw new Error("GEMINI_API_KEY environment variable not set");
 
-    // Fetch the image from Supabase Storage and encode it for Gemini.
-    const { base64, mimeType } = await fetchImageAsBase64(image_url);
+    const mimeType = (typeof mime_type === "string" && mime_type) ? mime_type : "image/jpeg";
 
     const rawContent = await callGemini(
       geminiKey,
       [
         { text: SYSTEM_PROMPT },
-        { inlineData: { mimeType, data: base64 } },
+        { inlineData: { mimeType, data: image_base64 } },
       ],
-      { temperature: 0.1, maxOutputTokens: 1200 }
+      { temperature: 0.0, maxOutputTokens: 512 }
     );
 
     let parsed: unknown;
@@ -188,7 +156,7 @@ Deno.serve(async (req: Request) => {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error("[analyse-meal]", message);
+    console.error("[scan-label]", message);
     logAiRequest(false, Date.now() - t0, message.slice(0, 80));
 
     return new Response(JSON.stringify({ error: message }), {

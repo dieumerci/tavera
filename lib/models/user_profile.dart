@@ -1,3 +1,5 @@
+import '../core/config/app_config.dart';
+
 enum SubscriptionTier { free, premium }
 
 enum Sex { male, female, other }
@@ -26,7 +28,7 @@ class UserProfile {
     this.email,
     this.name,
     this.avatarUrl,
-    this.calorieGoal = 2000,
+    this.calorieGoal = AppConfig.defaultCalorieGoal,
     this.tier = SubscriptionTier.free,
     this.onboardingCompleted = false,
     this.netCarbsMode = false,
@@ -61,7 +63,7 @@ class UserProfile {
         email: map['email'] as String?,
         name: map['name'] as String?,
         avatarUrl: map['avatar_url'] as String?,
-        calorieGoal: (map['calorie_goal'] as int?) ?? 2000,
+        calorieGoal: (map['calorie_goal'] as int?) ?? AppConfig.defaultCalorieGoal,
         tier: SubscriptionTier.values.firstWhere(
           (e) => e.name == (map['subscription_tier'] ?? 'free'),
           orElse: () => SubscriptionTier.free,

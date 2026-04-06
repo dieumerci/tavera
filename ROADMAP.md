@@ -1,8 +1,8 @@
 # TAVERA — Product Roadmap & Development Checklist
 
-**Document Version:** 1.9
-**Last Updated:** March 28, 2026
-**Status:** Phase 1 Complete · Phase 2 In Progress (code ~98% done — GEMINI_API_KEY secret + external setup remaining)
+**Document Version:** 2.0
+**Last Updated:** April 5, 2026
+**Status:** Phase 1 ✅ Complete · Phase 2 ✅ Complete · Phase 3 🔄 In Progress
 **Author:** Dee (Founder)
 
 > **Legend:** ✅ Complete · 🔄 In Progress · ⏭ Deferred · ❌ Not started
@@ -89,7 +89,7 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 - ✅ Build response assembly returning structured meal estimates (name, portion, calories, macros, confidence)
 - ✅ Handle error cases: unrecognised food, API timeout, network failure — with debug-level error messages surfaced in UI
 - ✅ Add fallback to manual food search when AI confidence is below 0.5 — 'Low confidence — tap to correct' hint row on FoodItemCard opens _EditItemSheet
-- [ ] Log all AI requests and responses for future model improvement (anonymised)
+- ✅ Log all AI requests and responses for future model improvement (anonymised) — `ai_request_logs` table (migration 010); `logAiRequest()` in `analyse-meal` Edge Function
 - [ ] Test with at least 50 different meal photos across cuisines and validate accuracy
 
 ### Meal Review & Confirmation Screen
@@ -221,7 +221,9 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 
 **Objective:** Add adaptive meal memory, coaching insights, premium subscription, paywall, and two high-value retention features: Social Accountability Challenges and AI Meal Planner with Grocery Integration. This is the phase where Tavera becomes a business and a habit.
 
-**Status: 🔄 IN PROGRESS**
+**Status: ✅ COMPLETE**
+
+> **Production-ready audit (April 2, 2026):** All hard-coded credentials eliminated. `Env` class unified dart-define (compile-time) + flutter_dotenv (runtime) with dart-define taking priority. `_devPremiumOverride` set to `false`. RevenueCat entitlement ID fixed to exact dashboard value `Kazadi Inc Pro`. `.env.example` created. `revenuecat-webhook` Edge Function live (event routing, HMAC verification, retry-safe HTTP 200). `ai_request_logs` table live (anonymised, indexed). Gemini migrated from 1.5 Flash to 2.0 Flash. README fully rewritten with production setup guide.
 
 > **Infrastructure complete (March 26, 2026):** Challenges tab wired to shell nav (Tab 2). Floating FAB with notch. Strong haptics. Account deletion Edge Function live. Challenge scoring (`challenge-notifier`) wired to all log paths. Water intake persisted to `daily_stats`. Dashboard cold-start data loading fixed. Camera permission screen fixed. Profile back-button crash fixed. Paywall sheet helper + Meal Planner / Challenges features added. `DateFormatting.toIsoDateString()` extension centralised. PostHog analytics integrated (8 key events, no-op in dev). Cold-start auth fix applied to all AsyncNotifier controllers. Adaptive meal memory wired to both log paths. Migration 005: `increment_known_meal_count` RPC, `grocery_lists` upsert constraint, challenges RLS self-recursion fixed.
 
@@ -231,8 +233,8 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 
 ### Adaptive Meal Memory
 
-- [ ] Write the known meal detection query: identify meals logged 3+ times with similar food item combinations
-- [ ] Build the known_meals table population logic (scheduled PostgreSQL function or Edge Function running daily)
+- ✅ Write the known meal detection query: identify meals logged 3+ times with similar food item combinations — `_known_meal_fingerprint()` + `backfill_known_meals()` in migration 010
+- ✅ Build the known_meals table population logic (scheduled PostgreSQL function or Edge Function running daily) — `backfill_known_meals()` runs on migration + nightly pg_cron at 02:00 UTC
 - ✅ Implement time-of-day bucketing so known meals are offered at the right time — circular hour distance sort in `topKnownMealsProvider`
 - ✅ Build the known meals suggestion row on the Dashboard — horizontal scrollable chips, long-press action sheet
 - ✅ Implement one-tap logging for known meals (confirm with single tap, no camera needed) — `relog()` in KnownMealController
@@ -246,7 +248,7 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 - ✅ Design the OpenAI prompt template: user goals, weekly meal summary, detected patterns, nutritional gaps
 - ✅ Constrain AI output to 1–3 actionable insights per week
 - ✅ Implement insight categories: pattern observations, recommendations, milestones
-- [ ] Schedule the Edge Function to run weekly (Monday morning per user timezone) _(needs cron or pg_cron setup)_
+- ✅ Schedule the Edge Function to run weekly (Monday morning per user timezone) — pg_cron `weekly-coaching-insights` every Monday 08:00 UTC in migration 010; `generate-coaching` now supports `trigger:"weekly_cron"` batch mode that processes all users with ≥ 3 log days that week
 - ✅ Build the insights screen in the Flutter app — `CoachingScreen` with week-grouped `_InsightCard` list
 - ✅ Implement read/unread state for insights — `markRead()` + optimistic state patch
 - ✅ Add a teaser insight card on the Dashboard for premium users — `_CoachingTeaserCard`
@@ -266,7 +268,7 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 - ✅ Implement subscription status checking on app launch and cache locally — `revenueCatPremiumProvider` FutureProvider with `.valueOrNull` fallback
 - ✅ Gate premium features: coaching insights, adaptive meal memory, macro tracking, history export, Social Challenges (leaderboards), AI Meal Planner
 - ✅ Implement subscription restoration for users who reinstall the app — Restore button in PaywallSheet + Profile screen
-- [ ] Set up RevenueCat webhooks → Supabase Edge Function for subscription status sync
+- ✅ Set up RevenueCat webhooks → Supabase Edge Function for subscription status sync — `revenuecat-webhook` Edge Function; verifies `Authorization` header against `REVENUECAT_WEBHOOK_SECRET`; maps all RevenueCat event types to `free`/`premium` tier; retry-safe (always returns HTTP 200)
 - [ ] Test purchase flows on both platforms with sandbox/test accounts
 
 ### Social Accountability Challenges
@@ -288,15 +290,15 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 
 #### AI motivational notifications
 - ✅ Write Edge Function `challenge-notifier` — wired to both `directLogMeal` and `MealController.confirmAndSave()`; fire-and-forget with `onComplete` callback to invalidate `myChallengesProvider` leaderboard cache; guarded by `hasChallenges` check to skip the network call when the user has no active challenges
-- [ ] Generate personalised motivational messages using OpenAI (progress-aware, not generic)
+- ✅ Generate personalised motivational messages using Gemini (progress-aware, not generic) — `generateMotivationalMessage()` in `challenge-notifier`; returned as `motivational_message` in response body
 - [ ] Send push notifications: milestone achievements, streak alerts, friendly competitive nudges
 - [ ] Notification suppression: respect the user's meal-time suppression windows
 
 #### Social sharing & infographics
-- [ ] Build auto-generated completion infographic: challenge name, user stats, rank, best day, streak
-- [ ] Implement share-to-social flow (iOS Share Sheet / Android Share Intent)
+- ✅ Build auto-generated completion infographic: challenge name, user stats, rank, best day, streak — `_buildShareText()` in `_CompletionBanner`
+- ✅ Implement share-to-social flow (iOS Share Sheet / Android Share Intent) — `Share.share()` via `share_plus`
 - ✅ Badge system: challenge badges shown on profile screen — `_ChallengeBadgesSection` with horizontal chip carousel using `completedChallengesProvider`
-- [ ] Implement achievement unlock notifications with celebratory animation
+- ✅ Implement achievement unlock with celebratory animation — 60-particle confetti `CustomPainter` overlaid on `_CompletionBanner`, fades out over 2.5s
 
 #### Phase 2 Social Challenges scope
 - ✅ Maximum 10 participants per challenge — `Challenge.maxParticipants` constant; client-side count check in `join()` before `_joinChallenge()`; Join button disabled + shows "Full" when at cap; capacity shown as "X/10" chip (red when full)
@@ -343,14 +345,14 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 - ✅ Show fasting card on Dashboard when a fast is active — live progress bar + HH:MM:SS countdown via `Timer.periodic` on the card's own `StatefulWidget`
 - ✅ Fasting history: last 14 completed sessions with completion badge, duration, and date
 - ✅ Fasting tile in Profile → Features section with "Active" badge when running
-- [ ] Smart calorie gate: suppress meal logging prompts during fasting window
+- ✅ Smart calorie gate: soft warning dialog (Cancel / End fast / Log anyway) gates all 4 log paths — `_checkFastingGate()` in `AddFoodSheet`
 - [ ] Gate behind premium (or free tier — evaluate at launch)
 
 #### Net Carbs Toggle _(Priority 4 — Low effort, Medium impact)_
 - ✅ Add `netCarbsMode` bool to `UserProfile` and persist to `profiles.net_carbs_mode` (migration 007)
 - ✅ Add toggle tile in Profile → Goals section (live-updates via Realtime stream)
 - ✅ Wherever carbs are displayed (dashboard, history, meal detail sheet), show `carbs − fiber` when mode is on — `fiber_g` per item from `analyse-meal` v3; `total_fiber` in `meal_logs` (migration 008); `_netCarbs()` helper in both screens; label switches to "Net Carbs"
-- [ ] Update coaching insights to use net carbs in prompt when mode is on
+- ✅ Update coaching insights to use net carbs in prompt when mode is on — `generate-coaching` fetches `net_carbs_mode` + `total_fiber`; computes net carbs per day; labels `C:` → `Net C:` in prompt context
 
 ### Analytics
 
@@ -373,7 +375,9 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 
 ## Phase 3 — Retention & Depth (Weeks 23–34)
 
-**Status: ❌ NOT STARTED**
+**Status: 🔄 IN PROGRESS**
+
+> **Phase 3 started (April 2, 2026):** Meal scoring (green/yellow/red per meal relative to daily goal) live as a computed method on `MealLog` — no new DB columns. Consistency streak computed on-read by scanning `meal_logs` date sequence — zero drift risk vs. stored counter. Weekly summary screen built with animated 7-day bar chart, macro averages, best/heaviest day highlights, and streak banner.
 
 > **Competitive positioning note (March 2026):** Phase 3 should deliver Tavera's three core differentiators vs. all major competitors: GLP-1 Mode (only MyNetDiary has any GLP-1 support), Mood-Energy Correlation Engine (no competitor has this), and Calorie Banking (flexible dieting vs. guilt-inducing daily targets). These are not just features — they are the "insight app" positioning made concrete.
 
@@ -382,9 +386,9 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 - [ ] Build the restaurant menu scanning feature
 - [ ] Integrate Apple HealthKit and Google Health Connect for activity data import (step counting out of scope; focus on calorie burn from workouts)
 - [ ] Implement dynamic calorie budget adjustment based on imported activity data
-- [ ] Build the meal scoring system: green/yellow/red rating per meal based on goal alignment
-- [ ] Implement consistency streaks that reward logging frequency
-- [ ] Build the weekly summary screen with visual trends
+- ✅ Build the meal scoring system: green/yellow/red rating per meal based on goal alignment — `MealScore` enum + `MealLog.score({calorieGoal})` computed method; score dots rendered in `_MealRow` on Dashboard; green = ≤35% of goal with ≥15g protein, yellow = ≤50%, red = over threshold
+- ✅ Implement consistency streaks that reward logging frequency — `loggingStreakProvider` scans last 60 days of `meal_logs`, counts consecutive days ending today; `_StreakCard` on Dashboard navigates to weekly summary
+- ✅ Build the weekly summary screen with visual trends — `WeeklySummaryScreen`: animated 7-day calorie bar chart with goal line, macro averages grid, best/heaviest day highlight card, horizontal macro proportion bar, streak banner
 - [ ] Implement data export (CSV) for premium users
 - [ ] Add multi-language support starting with Spanish, Portuguese, French, and Hindi
 - [ ] Evaluate Google Cloud Vision + USDA database lookup to replace or supplement OpenAI Vision
@@ -393,8 +397,8 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 - [ ] Implement `InstacartDeliveryService` and `AmazonFreshDeliveryService` grocery integrations
 
 ### Food Label Scanner _(Priority 5 — Medium effort, Medium impact)_
-- [ ] Add "Scan nutrition label" option to `AddFoodSheet` alongside existing barcode scan
-- [ ] Capture photo of nutrition facts panel; send to Edge Function for OCR extraction
+- ✅ Add "Scan nutrition label" option to `AddFoodSheet` alongside existing barcode scan
+- ✅ Capture photo of nutrition facts panel; send to Edge Function for OCR extraction
 - [ ] Parse all nutrients from label: calories, total fat, saturated fat, cholesterol, sodium, carbs, fiber, sugars, protein, vitamins
 - [ ] Pre-populate review sheet with extracted values; allow portion size adjustment
 - [ ] Particularly valuable for foods absent from barcode databases (restaurant branded items, imported products)
@@ -408,7 +412,7 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 - [ ] Add medication log: name (dropdown of approved GLP-1 medications), dose, injection date/time, next dose reminder
 - [ ] Weekly protein sufficiency alert: if protein < 80% of target for 3+ consecutive days, trigger coaching insight
 - [ ] Plateau detection: if weight (optional input) hasn't changed in 3 weeks during rapid loss phase, surface coaching message
-- [ ] Nausea/side-effect log: optional after-meal feeling rating (1–5); feed into Mood-Energy engine
+- ✅ Nausea/side-effect log: optional after-meal feeling rating (1–5); feed into Mood-Energy engine
 - [ ] GLP-1 coach prompt variant in `generate-coaching` Edge Function: different advice for medication-assisted users
 - [ ] Gate behind premium
 
@@ -416,8 +420,8 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 
 > **Unique differentiator:** No competitor connects food intake to how users feel. This creates a data moat — the more users engage, the more personalised the insights become, and the data cannot be replicated.
 
-- [ ] Add optional after-meal rating prompt (dismissable): Energy (1–5), Mood (1–5), Digestive Comfort (1–5)
-- [ ] Store ratings in `meal_logs.feeling` jsonb column (migration required)
+- ✅ Add optional after-meal rating prompt (dismissable): Energy (1–5), Mood (1–5)
+- ✅ Store ratings in `meal_logs.feeling` jsonb column (migration 011 applied)
 - [ ] After 14 days of data: run correlation analysis in `generate-coaching` Edge Function — identify food patterns that correlate with low energy, poor mood, digestive discomfort
 - [ ] Surface insights: "High-carb lunches correlate with 30% lower afternoon energy for you", "Your protein-rich breakfasts are linked to better mood scores"
 - [ ] Build a "How you felt" chart on the weekly summary screen (Energy trend line overlaid on calorie bars)
@@ -427,8 +431,8 @@ The most important principle guiding this roadmap is that Phase 1 must be shippe
 
 > **Psychological innovation:** Reframes calorie tracking from punishment to saving. Users who exceed daily targets feel guilty and abandon tracking. Banking treats unused calories as savings for special occasions.
 
-- [ ] Add weekly calorie budget view to dashboard (current week total vs. 7× daily goal)
-- [ ] Show "calorie bank balance": sum of daily deficits from Mon–today (saved calories)
+- ✅ Add weekly calorie budget view to dashboard (current week total vs. 7× daily goal)
+- ✅ Show "calorie bank balance": weekly budget minus total consumed; over-budget shown in red
 - [ ] Allow user to tag upcoming days as "planned indulgence" — bank balance can be pre-allocated
 - [ ] Smart warning when bank balance > 20% of weekly goal: gentle "make sure you're eating enough" message
 - [ ] Celebration when user ends the week within 5% of weekly budget (even if some days were over)

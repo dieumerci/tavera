@@ -2,12 +2,14 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../controllers/auth_controller.dart';
+import '../../core/config/app_config.dart';
 import '../../controllers/challenge_controller.dart';
 import '../../controllers/coaching_controller.dart';
 import '../../controllers/fasting_controller.dart';
@@ -38,11 +40,20 @@ class DashboardScreen extends ConsumerWidget {
     final activeFast = ref.watch(fastingControllerProvider).valueOrNull;
     final knownMeals = ref.watch(topKnownMealsProvider);
     final unreadInsights = ref.watch(unreadInsightCountProvider);
-    final weeklyCalories = ref.watch(weeklyCaloriesProvider).valueOrNull;
+    // Watch auth state directly so we can distinguish "auth still loading"
+    // from "genuinely no meals this week". weeklyCaloriesProvider returns
+    // AsyncData([0,0,0,0,0,0,0]) while auth is loading (not AsyncLoading),
+    // so we need this flag to keep showing the skeleton during that window.
+    final authLoading = ref.watch(authStateProvider).isLoading;
+    // Watch the full async state so we can render a skeleton while loading
+    // instead of silently hiding the card when auth hasn't resolved yet.
+    final weeklyCaloriesAsync = ref.watch(weeklyCaloriesProvider);
     final activeChallenges = ref.watch(myChallengesProvider).valueOrNull
             ?.where((c) => c.isActive)
             .toList() ??
         [];
+    // Phase 3 — streak (optional: hidden when 0)
+    final streak = ref.watch(loggingStreakProvider).valueOrNull ?? 0;
 
     final log = logAsync.valueOrNull;
     final profile = profileAsync.valueOrNull;
@@ -131,6 +142,7 @@ class DashboardScreen extends ConsumerWidget {
                   carbLabel: carbLabel,
                   fat: log?.totalFat ?? 0,
                   fatGoal: _macroGoal(calorieGoal, 'fat'),
+                  netCarbsMode: netCarbsMode,
                 ),
               ),
             ),
@@ -186,20 +198,67 @@ class DashboardScreen extends ConsumerWidget {
               ),
             ),
 
+            const SliverToBoxAdapter(child: SizedBox(height: 16)),
+
             // ── Weekly calorie trend ────────────────────────────────────────
-            if (weeklyCalories != null && weeklyCalories.any((v) => v > 0)) ...[
+            // Show skeleton in three situations:
+            //   1. weeklyCaloriesProvider is in AsyncLoading (normal loading)
+            //   2. Auth is still loading — weeklyCaloriesProvider is in
+            //      AsyncData([0,0,...]) but those zeros are not real data
+            // Hide the card entirely only when auth is settled AND there are
+            // genuinely no calories for the week.
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: authLoading
+                    ? const _WeeklyTrendSkeleton()
+                    : weeklyCaloriesAsync.when(
+                        loading: () => const _WeeklyTrendSkeleton(),
+                        error: (_, __) => const SizedBox.shrink(),
+                        data: (weeklyCalories) => weeklyCalories.any((v) => v > 0)
+                            ? _WeeklyTrendCard(
+                                calories: weeklyCalories,
+                                goal: calorieGoal,
+                              )
+                            : const SizedBox.shrink(),
+                      ),
+              ),
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 20)),
+
+            // ── Phase 3: Calorie Banking ────────────────────────────────────
+            // Hidden while auth is loading (zeros not yet meaningful) and when
+            // there are genuinely no calories logged this week.
+            SliverToBoxAdapter(
+              child: (!authLoading)
+                  ? weeklyCaloriesAsync.maybeWhen(
+                      data: (weeklyCalories) {
+                        if (!weeklyCalories.any((v) => v > 0)) {
+                          return const SizedBox.shrink();
+                        }
+                        return Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                          child: _CalorieBankCard(
+                            weeklyCalories: weeklyCalories,
+                            dailyGoal: calorieGoal,
+                          ),
+                        );
+                      },
+                      orElse: () => const SizedBox.shrink(),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+
+            // ── Phase 3: Consistency streak ─────────────────────────────────
+            if (streak > 0) ...[
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: _WeeklyTrendCard(
-                    calories: weeklyCalories,
-                    goal: calorieGoal,
-                  ),
+                  child: _StreakCard(streak: streak),
                 ),
               ),
-              const SliverToBoxAdapter(child: SizedBox(height: 20)),
-            ] else
-              const SliverToBoxAdapter(child: SizedBox(height: 20)),
+              const SliverToBoxAdapter(child: SizedBox(height: 16)),
+            ],
 
             // ── Water intake ────────────────────────────────────────────────
             SliverToBoxAdapter(
@@ -366,6 +425,8 @@ class DashboardScreen extends ConsumerWidget {
 
 // ─── Weekly calorie trend ─────────────────────────────────────────────────────
 
+/// Dark-themed bar chart showing calorie intake for the last 7 days.
+/// Powered by fl_chart for smooth animations, touch tooltips, and a goal line.
 class _WeeklyTrendCard extends StatelessWidget {
   final List<int> calories; // 7 values, oldest → newest
   final int goal;
@@ -378,8 +439,10 @@ class _WeeklyTrendCard extends StatelessWidget {
       return DateFormat('E').format(d)[0]; // M T W T F S S
     });
 
+    final maxY = goal > 0 ? goal * 1.35 : 2600.0;
+
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
@@ -399,60 +462,286 @@ class _WeeklyTrendCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           SizedBox(
-            height: 72,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: List.generate(7, (i) {
-                final kcal = calories[i];
-                final frac = goal > 0
-                    ? (kcal / goal).clamp(0.0, 1.5)
-                    : 0.0;
-                final isToday = i == 6;
-                final Color barColor = kcal == 0
-                    ? AppColors.border
-                    : kcal <= goal
-                        ? AppColors.accent
-                        : AppColors.danger;
-
-                return Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 3),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        // Bar
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 400),
-                          curve: Curves.easeOut,
-                          height: math.max(4, frac * 52),
-                          decoration: BoxDecoration(
-                            color: barColor
-                                .withValues(alpha: isToday ? 1.0 : 0.65),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
+            height: 110,
+            child: BarChart(
+              BarChartData(
+                backgroundColor: Colors.transparent,
+                maxY: maxY,
+                minY: 0,
+                // Touch tooltip shows calorie value on tap
+                barTouchData: BarTouchData(
+                  enabled: true,
+                  touchTooltipData: BarTouchTooltipData(
+                    getTooltipColor: (_) => AppColors.card,
+                    tooltipRoundedRadius: 8,
+                    tooltipPadding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 4),
+                    getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                      final kcal = calories[groupIndex];
+                      if (kcal == 0) return null;
+                      return BarTooltipItem(
+                        '$kcal kcal',
+                        AppTextStyles.caption.copyWith(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 11,
                         ),
-                        const SizedBox(height: 6),
-                        // Day label
-                        Text(
-                          dayLabels[i],
-                          style: AppTextStyles.caption.copyWith(
-                            fontSize: 10,
-                            color: isToday
-                                ? AppColors.accent
-                                : AppColors.textTertiary,
-                            fontWeight: isToday
-                                ? FontWeight.w700
-                                : FontWeight.w400,
+                      );
+                    },
+                  ),
+                ),
+                titlesData: FlTitlesData(
+                  show: true,
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 22,
+                      getTitlesWidget: (value, meta) {
+                        final i = value.toInt();
+                        if (i < 0 || i >= 7) return const SizedBox.shrink();
+                        final isToday = i == 6;
+                        return SideTitleWidget(
+                          meta: meta,
+                          child: Text(
+                            dayLabels[i],
+                            style: AppTextStyles.caption.copyWith(
+                              fontSize: 10,
+                              color: isToday
+                                  ? AppColors.accent
+                                  : AppColors.textTertiary,
+                              fontWeight: isToday
+                                  ? FontWeight.w700
+                                  : FontWeight.w400,
+                            ),
                           ),
-                        ),
-                      ],
+                        );
+                      },
                     ),
                   ),
-                );
-              }),
+                  leftTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false)),
+                  topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false)),
+                ),
+                // Dashed horizontal goal line
+                gridData: FlGridData(
+                  show: goal > 0,
+                  drawVerticalLine: false,
+                  drawHorizontalLine: true,
+                  horizontalInterval: goal.toDouble(),
+                  getDrawingHorizontalLine: (_) => FlLine(
+                    color: AppColors.accent.withValues(alpha: 0.30),
+                    strokeWidth: 1,
+                    dashArray: [4, 4],
+                  ),
+                ),
+                borderData: FlBorderData(show: false),
+                barGroups: List.generate(7, (i) {
+                  final kcal = calories[i];
+                  final isToday = i == 6;
+                  final Color barColor = kcal == 0
+                      ? AppColors.border
+                      : kcal <= goal
+                          ? AppColors.accent
+                          : AppColors.danger;
+                  return BarChartGroupData(
+                    x: i,
+                    barRods: [
+                      BarChartRodData(
+                        toY: kcal.toDouble(),
+                        color:
+                            barColor.withValues(alpha: isToday ? 1.0 : 0.65),
+                        width: 26,
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(5),
+                        ),
+                      ),
+                    ],
+                  );
+                }),
+              ),
+              duration: const Duration(milliseconds: 400),
+              curve: Curves.easeOut,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Weekly trend skeleton ────────────────────────────────────────────────────
+
+/// Placeholder rendered while weeklyCaloriesProvider is loading.
+/// Matches the card's dimensions so the layout doesn't shift when data arrives.
+class _WeeklyTrendSkeleton extends StatelessWidget {
+  const _WeeklyTrendSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    const shimmer = AppColors.card;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header row placeholders
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                width: 82,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: shimmer,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              Container(
+                width: 64,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: shimmer,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          // Bar skeletons — varying heights to look natural
+          SizedBox(
+            height: 110,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: const [56.0, 72.0, 40.0, 80.0, 52.0, 88.0, 64.0]
+                  .map((h) => Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              Container(
+                                height: h * 0.78,
+                                decoration: BoxDecoration(
+                                  color: shimmer,
+                                  borderRadius: BorderRadius.circular(5),
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Container(
+                                width: 10,
+                                height: 10,
+                                decoration: BoxDecoration(
+                                  color: shimmer,
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ))
+                  .toList(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Calorie Bank card ────────────────────────────────────────────────────────
+//
+// Shows weekly calorie budget vs. total consumed so users can see whether they
+// have "calories banked" (surplus budget) or are over for the week.
+//
+// Budget  = dailyGoal × 7
+// Spent   = sum of weeklyCalories (7 values, oldest → newest)
+// Banked  = Budget − Spent  (positive = under budget, negative = over)
+//
+// The progress bar fills from left to right as calories are consumed.
+// It turns red only when the user has exceeded 100 % of the weekly budget.
+
+class _CalorieBankCard extends StatelessWidget {
+  final List<int> weeklyCalories; // 7 values
+  final int dailyGoal;
+
+  const _CalorieBankCard({
+    required this.weeklyCalories,
+    required this.dailyGoal,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final budget = dailyGoal * 7;
+    final spent = weeklyCalories.fold<int>(0, (s, v) => s + v);
+    final banked = budget - spent;
+    final ratio = budget > 0 ? (spent / budget).clamp(0.0, 1.0) : 0.0;
+    final isOver = spent > budget;
+    final barColor = isOver ? AppColors.danger : AppColors.accent;
+    final bankedLabel = isOver
+        ? '${(-banked).toString()} kcal over'
+        : '${banked.toString()} kcal banked';
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Weekly budget', style: AppTextStyles.labelLarge),
+              Text(
+                bankedLabel,
+                style: AppTextStyles.caption.copyWith(
+                  color: isOver ? AppColors.danger : AppColors.accent,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          // Progress bar
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              value: ratio,
+              minHeight: 8,
+              backgroundColor: AppColors.card,
+              valueColor: AlwaysStoppedAnimation<Color>(barColor),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '$spent kcal consumed',
+                style: AppTextStyles.caption.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              Text(
+                '$budget kcal budget',
+                style: AppTextStyles.caption.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -501,6 +790,7 @@ class _CalorieRingCard extends StatelessWidget {
   final String carbLabel;
   final double fat;
   final double fatGoal;
+  final bool netCarbsMode;
 
   const _CalorieRingCard({
     required this.consumed,
@@ -512,6 +802,7 @@ class _CalorieRingCard extends StatelessWidget {
     this.carbLabel = 'Carbs',
     required this.fat,
     required this.fatGoal,
+    this.netCarbsMode = false,
   });
 
   @override
@@ -792,7 +1083,7 @@ class _WaterCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const goalMl = 2000;
+    const goalMl = AppConfig.defaultWaterGoalMl;
     final progress = (waterMl / goalMl).clamp(0.0, 1.0);
     final glasses = (waterMl / 250).round();
     const goalGlasses = goalMl ~/ 250;
@@ -878,6 +1169,14 @@ class _MealRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final names = meal.items.map((i) => i.name).take(3).join(', ');
     final timeStr = _formatTime(meal.loggedAt);
+    final calorieGoal =
+        ref.watch(userProfileProvider).valueOrNull?.calorieGoal ?? 2000;
+    final score = meal.score(calorieGoal: calorieGoal);
+    final scoreColor = switch (score) {
+      MealScore.green => AppColors.success,
+      MealScore.yellow => const Color(0xFFFFD166),
+      MealScore.red => AppColors.danger,
+    };
 
     return GestureDetector(
       onTap: () {
@@ -898,6 +1197,16 @@ class _MealRow extends ConsumerWidget {
         ),
         child: Row(
           children: [
+            // Meal score dot
+            Container(
+              width: 8,
+              height: 8,
+              margin: const EdgeInsets.only(right: 10),
+              decoration: BoxDecoration(
+                color: scoreColor,
+                shape: BoxShape.circle,
+              ),
+            ),
             // Thumbnail
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
@@ -1022,8 +1331,19 @@ class _KnownMealChip extends ConsumerWidget {
     return GestureDetector(
       onTap: () async {
         HapticService.heavy();
-        await ref.read(knownMealControllerProvider.notifier).relog(meal, ref);
-        ref.invalidate(logControllerProvider);
+        final logId = await ref
+            .read(knownMealControllerProvider.notifier)
+            .relog(meal, ref);
+        if (logId != null) {
+          ref.invalidate(logControllerProvider);
+        } else if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Could not log meal. Check your connection and try again.'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
       },
       onLongPress: () {
         HapticService.medium();
@@ -1120,35 +1440,51 @@ class _KnownMealActionSheet extends StatelessWidget {
               HapticService.selection();
               Navigator.of(context).pop();
               final ctrl = TextEditingController(text: meal.name as String);
-              final newName = await showDialog<String>(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  backgroundColor: AppColors.surface,
-                  title: Text('Rename meal',
-                      style: AppTextStyles.titleMedium),
-                  content: TextField(
-                    controller: ctrl,
-                    autofocus: true,
-                    style: AppTextStyles.bodyLarge,
-                    decoration: const InputDecoration(hintText: 'Meal name'),
+              String? newName;
+              try {
+                newName = await showDialog<String>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    backgroundColor: AppColors.surface,
+                    title: Text('Rename meal',
+                        style: AppTextStyles.titleMedium),
+                    content: TextField(
+                      controller: ctrl,
+                      autofocus: true,
+                      style: AppTextStyles.bodyLarge,
+                      decoration: const InputDecoration(hintText: 'Meal name'),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(ctx).pop(),
+                        child: const Text('Cancel'),
+                      ),
+                      TextButton(
+                        onPressed: () =>
+                            Navigator.of(ctx).pop(ctrl.text),
+                        child: const Text('Save'),
+                      ),
+                    ],
                   ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(ctx).pop(),
-                      child: const Text('Cancel'),
-                    ),
-                    TextButton(
-                      onPressed: () =>
-                          Navigator.of(ctx).pop(ctrl.text),
-                      child: const Text('Save'),
-                    ),
-                  ],
-                ),
-              );
+                );
+              } finally {
+                ctrl.dispose();
+              }
               if (newName != null && newName.trim().isNotEmpty) {
-                await ref
-                    .read(knownMealControllerProvider.notifier)
-                    .rename(meal.id as String, newName);
+                try {
+                  await ref
+                      .read(knownMealControllerProvider.notifier)
+                      .rename(meal.id as String, newName);
+                } catch (_) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Failed to rename meal. Please try again.'),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                }
               }
             },
           ),
@@ -1164,9 +1500,20 @@ class _KnownMealActionSheet extends StatelessWidget {
             onTap: () async {
               HapticService.medium();
               Navigator.of(context).pop();
-              await ref
-                  .read(knownMealControllerProvider.notifier)
-                  .delete(meal.id as String);
+              try {
+                await ref
+                    .read(knownMealControllerProvider.notifier)
+                    .delete(meal.id as String);
+              } catch (_) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Failed to remove meal. Please try again.'),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              }
             },
           ),
           ListTile(
@@ -1548,6 +1895,61 @@ class _MealListSkeleton extends StatelessWidget {
             color: AppColors.surface,
             borderRadius: BorderRadius.circular(14),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Streak card (Phase 3) ────────────────────────────────────────────────────
+//
+// Shown on the Dashboard when the user has a logging streak >= 1 day.
+// Tapping opens the WeeklySummaryScreen for the full 7-day breakdown.
+
+class _StreakCard extends StatelessWidget {
+  final int streak;
+  const _StreakCard({required this.streak});
+
+  @override
+  Widget build(BuildContext context) {
+    final label = streak == 1 ? '1-day streak' : '$streak-day streak';
+    final subLabel = streak < 3
+        ? 'Log today to keep it going'
+        : streak < 7
+            ? 'Great consistency!'
+            : '$streak days — incredible!';
+
+    return GestureDetector(
+      onTap: () {
+        HapticService.selection();
+        context.push('/weekly-summary');
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: AppColors.accent.withValues(alpha: 0.07),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+              color: AppColors.accent.withValues(alpha: 0.25), width: 1),
+        ),
+        child: Row(
+          children: [
+            const Text('🔥', style: TextStyle(fontSize: 22)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label,
+                      style: AppTextStyles.labelLarge
+                          .copyWith(color: AppColors.accent)),
+                  Text(subLabel, style: AppTextStyles.caption),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded,
+                color: AppColors.accent, size: 20),
+          ],
         ),
       ),
     );

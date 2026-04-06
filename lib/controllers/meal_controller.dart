@@ -1,4 +1,5 @@
 import 'dart:async' show unawaited;
+import 'dart:convert' show base64Encode;
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -49,6 +50,11 @@ class MealState {
   final List<FoodItem> items;
   final int totalCalories;
   final String? error;
+  /// The database ID of the meal log after a successful save.
+  /// Non-null only when step == MealProcessingStep.saved.
+  /// Used by the caller (AddFoodSheet) to open the mood-rating sheet for
+  /// the correct log without a second round-trip to fetch it.
+  final String? savedLogId;
 
   const MealState({
     this.step = MealProcessingStep.idle,
@@ -56,6 +62,7 @@ class MealState {
     this.items = const [],
     this.totalCalories = 0,
     this.error,
+    this.savedLogId,
   });
 
   bool get isProcessing =>
@@ -82,6 +89,7 @@ class MealState {
     List<FoodItem>? items,
     int? totalCalories,
     String? error,
+    String? savedLogId,
   }) =>
       MealState(
         step: step ?? this.step,
@@ -89,6 +97,7 @@ class MealState {
         items: items ?? this.items,
         totalCalories: totalCalories ?? this.totalCalories,
         error: error,
+        savedLogId: savedLogId ?? this.savedLogId,
       );
 }
 
@@ -202,6 +211,78 @@ class MealController extends Notifier<MealState> {
     }
   }
 
+  /// Nutrition label scanner pipeline: compress → base64 → scan-label edge fn → review.
+  ///
+  /// Unlike [analyseCapture], label scans do not upload to Storage — the image
+  /// is sent as base64 directly to avoid cluttering the meal-images bucket.
+  /// The result is a single [FoodItem] pre-populated with printed values.
+  Future<void> analyseLabel(File imageFile) async {
+    final client = Supabase.instance.client;
+    final session = client.auth.currentSession;
+    final userId = session?.user.id;
+
+    if (userId == null || session == null) {
+      state = state.copyWith(
+        step: MealProcessingStep.idle,
+        error: 'Session expired — please sign out and sign back in.',
+      );
+      return;
+    }
+
+    state = state.copyWith(step: MealProcessingStep.analysing, error: null);
+
+    try {
+      final rawBytes = await imageFile.readAsBytes();
+      final compressedBytes = await compute(_compressImageIsolate, rawBytes);
+
+      // Delete the original file after reading — label photos don't need
+      // to persist on device once the bytes are in memory.
+      unawaited(imageFile.delete().catchError((_) => imageFile));
+
+      final imageBase64 = base64Encode(compressedBytes);
+
+      late final dynamic response;
+      try {
+        response = await client.functions.invoke(
+          'scan-label',
+          body: {'image_base64': imageBase64, 'mime_type': 'image/jpeg'},
+          headers: {'Authorization': 'Bearer ${session.accessToken}'},
+        );
+      } catch (e) {
+        throw Exception(
+            'Edge function unreachable — is "scan-label" deployed?\n$e');
+      }
+
+      if (response.status != 200) {
+        final body = response.data?.toString() ?? 'no body';
+        throw Exception(
+            'scan-label error (HTTP ${response.status})\nResponse: $body');
+      }
+
+      final data = response.data as Map<String, dynamic>;
+
+      final item = FoodItem.fromMap(data);
+
+      // Surface a user-friendly error when the label was unreadable.
+      if (item.calories == 0 &&
+          (data['confidence'] as num? ?? 1.0) < 0.2) {
+        throw Exception(
+            'Could not read the label — try a clearer, better-lit photo.');
+      }
+
+      state = state.copyWith(
+        step: MealProcessingStep.review,
+        items: [item],
+        totalCalories: item.calories,
+      );
+    } catch (e) {
+      state = state.copyWith(
+        step: MealProcessingStep.idle,
+        error: e.toString(),
+      );
+    }
+  }
+
   /// Called from the review UI when the user edits a food item.
   void updateItem(int index, FoodItem updated) {
     final items = List<FoodItem>.from(state.items);
@@ -301,7 +382,10 @@ class MealController extends Notifier<MealState> {
         });
       }
 
-      state = state.copyWith(step: MealProcessingStep.saved);
+      state = state.copyWith(
+        step: MealProcessingStep.saved,
+        savedLogId: log.id,
+      );
       return log;
     } catch (e) {
       final msg = e.toString();

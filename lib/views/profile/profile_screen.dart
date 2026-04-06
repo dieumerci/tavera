@@ -499,7 +499,7 @@ class _GoalEditorSheetState extends ConsumerState<_GoalEditorSheet> {
   late int _goal;
   bool _saving = false;
 
-  static const _presets = [1500, 1800, 2000, 2500, 3000];
+  static const _presets = AppConfig.caloriePresets;
 
   @override
   void initState() {
@@ -522,7 +522,14 @@ class _GoalEditorSheetState extends ConsumerState<_GoalEditorSheet> {
       }
       if (mounted) Navigator.of(context).pop();
     } catch (_) {
-      // show nothing — non-fatal, user can try again
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to save goal. Please try again.'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -716,7 +723,14 @@ class _BodyStatsSheetState extends ConsumerState<_BodyStatsSheet> {
       }
       if (mounted) Navigator.of(context).pop();
     } catch (_) {
-      // Non-fatal.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to save body stats. Please try again.'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }

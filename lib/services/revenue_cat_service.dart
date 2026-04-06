@@ -4,16 +4,16 @@
 // through here so the rest of the app stays agnostic of the payment SDK.
 //
 // Setup checklist (one-time, before production):
-//   1. Create a RevenueCat project at app.revenuecat.com
-//   2. Create an Entitlement named "premium"
+//   1. Create a RevenueCat project at app.revenuecat.com  ✅ done
+//   2. Entitlement "Kazadi Inc Pro" created in RevenueCat  ✅ done
 //   3. Configure products in App Store Connect + Google Play Console and link
-//      them to the "premium" entitlement inside RevenueCat
-//   4. Add your API keys via --dart-define at build time:
-//        --dart-define=REVENUECAT_API_KEY_IOS=appl_...
-//        --dart-define=REVENUECAT_API_KEY_ANDROID=goog_...
+//      them to the "Kazadi Inc Pro" entitlement inside RevenueCat
+//   4. Keys available in two ways (both work):
+//        a) Local dev: set REVENUECAT_API_KEY_IOS / REVENUECAT_API_KEY_ANDROID in .env
+//        b) Production build: --dart-define=REVENUECAT_API_KEY_IOS=appl_...
 //
-// No-op behaviour: When neither key is set (local dev), every method
-// returns null/false immediately so no calls are made to the SDK.
+// No-op behaviour: When neither key is set, every method returns null/false
+// immediately so no calls are made to the SDK.
 
 import 'dart:io';
 
@@ -24,8 +24,10 @@ import '../core/config/env.dart';
 class RevenueCatService {
   RevenueCatService._();
 
-  /// Identifier for the "premium" entitlement in your RevenueCat dashboard.
-  static const _entitlementId = 'premium';
+  /// Identifier for the premium entitlement in the RevenueCat dashboard.
+  /// Must match exactly what is configured under Entitlements in your
+  /// RevenueCat project (app.revenuecat.com → Entitlements).
+  static const _entitlementId = 'Kazadi Inc Pro';
 
   static bool get _enabled {
     if (Platform.isIOS) return Env.revenueCatApiKeyIos.isNotEmpty;

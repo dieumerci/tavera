@@ -32,6 +32,14 @@ class DailyLogState {
 
   int get logCount => todayLogs.length;
 
+  /// Sum of dietary fibre across all today's meals (grams).
+  /// Null entries (pre-migration logs) are treated as 0.
+  double get totalFiber =>
+      todayLogs.fold(0.0, (s, l) => s + (l.totalFiber ?? 0));
+
+  double get totalNetCarbs =>
+      todayLogs.fold(0.0, (s, l) => s + l.totalNetCarbs);
+
   DailyLogState copyWith({
     List<MealLog>? todayLogs,
     int? totalCalories,
@@ -161,10 +169,29 @@ final historyLogsProvider =
 /// Returns a list of 7 integers — calories consumed for each of the last 7
 /// local calendar days, oldest first (index 0 = 6 days ago, index 6 = today).
 /// Days with no logs contribute 0.
+///
+/// ⚠️  Uses `ref.watch(authStateProvider)` directly — NOT `.future`.
+///
+/// `StreamProvider.future` in Riverpod 2.x is a one-shot future that resolves
+/// with the FIRST stream emission and then stays frozen at that value forever.
+/// Supabase's `onAuthStateChange` always emits `AuthState(session: null)` first
+/// (while it reads secure storage), then a second event with the real session.
+/// Using `.future` therefore caches a null-session result and never re-runs —
+/// which is exactly why the 7-day trend was blank on cold start.
+///
+/// Watching the `StreamProvider` directly creates a live dependency: every new
+/// emission invalidates this provider and triggers a fresh DB query, so the
+/// chart appears as soon as the session is restored (typically < 300 ms).
 final weeklyCaloriesProvider = FutureProvider<List<int>>((ref) async {
+  final authAsync = ref.watch(authStateProvider);
+  final session = authAsync.valueOrNull?.session;
+  // No session yet (auth still loading or truly unauthenticated).
+  // Return zeros now; this provider will be re-run automatically when
+  // authAsync emits a new value (i.e., once the session is restored).
+  if (session == null) return List.filled(7, 0);
+
   final client = Supabase.instance.client;
-  final userId = client.auth.currentUser?.id;
-  if (userId == null) return List.filled(7, 0);
+  final userId = session.user.id;
 
   final today = DateTime.now();
   // Fetch 7-day window in one query: from 6 days ago (local midnight UTC) to
@@ -194,6 +221,157 @@ final weeklyCaloriesProvider = FutureProvider<List<int>>((ref) async {
   }
   return buckets;
 });
+
+// ── Consistency streak ──────────────────────────────────────────────────────
+//
+// Counts consecutive calendar days (ending today) on which the user logged
+// at least one meal. Computed entirely from meal_logs — no extra DB column.
+// Looks back 60 days to bound the query.
+
+/// Current logging streak in days. 0 when today has no logs yet.
+final loggingStreakProvider = FutureProvider<int>((ref) async {
+  // Same live-dependency pattern as weeklyCaloriesProvider — see its comment
+  // for a full explanation of why .future must NOT be used here.
+  final authAsync = ref.watch(authStateProvider);
+  final session = authAsync.valueOrNull?.session;
+  if (session == null) return 0;
+
+  final client = Supabase.instance.client;
+  final userId = session.user.id;
+
+  final today = DateTime.now();
+  final cutoff =
+      DateTime(today.year, today.month, today.day - 60).toUtc();
+
+  final rows = await client
+      .from('meal_logs')
+      .select('logged_at')
+      .eq('user_id', userId)
+      .gte('logged_at', cutoff.toIso8601String())
+      .order('logged_at', ascending: false);
+
+  // Collect unique local calendar day strings.
+  final days = <String>{};
+  for (final row in (rows as List<dynamic>)) {
+    final dt = DateTime.parse(row['logged_at'] as String).toLocal();
+    days.add(
+        '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}');
+  }
+
+  // Walk backwards from today until a day without a log is found.
+  int streak = 0;
+  var checkDate = DateTime(today.year, today.month, today.day);
+  while (streak < 61) {
+    final key =
+        '${checkDate.year}-${checkDate.month.toString().padLeft(2, '0')}-${checkDate.day.toString().padLeft(2, '0')}';
+    if (!days.contains(key)) break;
+    streak++;
+    checkDate = checkDate.subtract(const Duration(days: 1));
+  }
+  return streak;
+});
+
+// ── Weekly full stats ────────────────────────────────────────────────────────
+//
+// Richer version of weeklyCaloriesProvider — returns per-day summaries with
+// macros for the weekly summary screen.
+
+class DayStats {
+  final DateTime date;
+  final int calories;
+  final double protein;
+  final double carbs;
+  final double fat;
+  final int mealCount;
+
+  const DayStats({
+    required this.date,
+    required this.calories,
+    required this.protein,
+    required this.carbs,
+    required this.fat,
+    required this.mealCount,
+  });
+}
+
+/// Returns daily stats for the last 7 local calendar days, oldest first.
+/// Days with no logs contribute a zero DayStats entry.
+final weeklyFullStatsProvider = FutureProvider<List<DayStats>>((ref) async {
+  // Same live-dependency pattern as weeklyCaloriesProvider — see its comment.
+  final authAsync = ref.watch(authStateProvider);
+  final session = authAsync.valueOrNull?.session;
+  if (session == null) return _emptyWeek();
+
+  final client = Supabase.instance.client;
+  final userId = session.user.id;
+
+  final today = DateTime.now();
+  final windowStart =
+      DateTime(today.year, today.month, today.day - 6).toUtc();
+  final windowEnd =
+      DateTime(today.year, today.month, today.day + 1).toUtc();
+
+  final rows = await client
+      .from('meal_logs')
+      .select(
+          'logged_at, total_calories, total_protein, total_carbs, total_fat')
+      .eq('user_id', userId)
+      .gte('logged_at', windowStart.toIso8601String())
+      .lt('logged_at', windowEnd.toIso8601String());
+
+  // Accumulate totals per local calendar day.
+  // Keys are zero-padded (yyyy-MM-dd) to prevent month/day boundary mismatches
+  // where e.g. Jan 5 produces "2026-1-5" instead of "2026-01-05".
+  final buckets = <String, DayStats>{};
+  for (final row in (rows as List<dynamic>)) {
+    final dt = DateTime.parse(row['logged_at'] as String).toLocal();
+    final key =
+        '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+    final existing = buckets[key];
+    final kcal = (row['total_calories'] as num?)?.toInt() ?? 0;
+    final p = (row['total_protein'] as num?)?.toDouble() ?? 0;
+    final c = (row['total_carbs'] as num?)?.toDouble() ?? 0;
+    final f = (row['total_fat'] as num?)?.toDouble() ?? 0;
+    buckets[key] = DayStats(
+      date: DateTime(dt.year, dt.month, dt.day),
+      calories: (existing?.calories ?? 0) + kcal,
+      protein: (existing?.protein ?? 0) + p,
+      carbs: (existing?.carbs ?? 0) + c,
+      fat: (existing?.fat ?? 0) + f,
+      mealCount: (existing?.mealCount ?? 0) + 1,
+    );
+  }
+
+  // Build ordered list for the 7-day window, filling gaps with zero entries.
+  return List.generate(7, (i) {
+    final d = DateTime(today.year, today.month, today.day - (6 - i));
+    final key =
+        '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    return buckets[key] ??
+        DayStats(
+            date: d,
+            calories: 0,
+            protein: 0,
+            carbs: 0,
+            fat: 0,
+            mealCount: 0);
+  });
+});
+
+List<DayStats> _emptyWeek() {
+  final today = DateTime.now();
+  return List.generate(
+    7,
+    (i) => DayStats(
+      date: DateTime(today.year, today.month, today.day - (6 - i)),
+      calories: 0,
+      protein: 0,
+      carbs: 0,
+      fat: 0,
+      mealCount: 0,
+    ),
+  );
+}
 
 // ── Water tracking ──────────────────────────────────────────────────────────
 // Persisted to `daily_stats` in Supabase so intake survives restarts and

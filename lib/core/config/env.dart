@@ -1,16 +1,28 @@
-/// Compile-time environment values injected via --dart-define.
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
+/// Environment values for the Tavera app.
 ///
-/// Build with secrets:
-///   flutter run \
+/// Resolution order (highest priority wins):
+///   1. --dart-define at build time  → compile-time constants (production builds)
+///   2. .env file at runtime         → dotenv fallback (local development)
+///   3. Empty string                 → no-op behaviour in services
+///
+/// Production build example:
+///   flutter build ipa --release \
 ///     --dart-define=SUPABASE_URL=https://xxx.supabase.co \
 ///     --dart-define=SUPABASE_ANON_KEY=eyJ... \
-///     --dart-define=OPENAI_API_KEY=sk-...
+///     --dart-define=REVENUECAT_API_KEY_IOS=appl_... \
+///     --dart-define=POSTHOG_API_KEY=phc_...
 ///
-/// defaultValue falls back to the dev keys so local runs work without
-/// any extra flags. Remove the defaults before open-sourcing the repo.
+/// Local development: copy .env.example → .env and fill in your credentials.
+/// The dotenv fallback means you never need --dart-define flags locally.
 class Env {
   Env._();
 
+  // ── Supabase ─────────────────────────────────────────────────────────────
+  // The anon key is intentionally safe to embed — it is a *public* credential
+  // protected by Supabase's Row-Level Security policies, not an admin key.
+  // Swap for your own project's values before open-sourcing this repository.
   static const supabaseUrl = String.fromEnvironment(
     'SUPABASE_URL',
     defaultValue: 'https://hdtuezlbabsebkoucjhp.supabase.co',
@@ -25,26 +37,28 @@ class Env {
         '.6i2WwozUbjWGsRDRUKuNWiJetH13zu7-7VIW9WEYZJ4',
   );
 
-  /// PostHog project API key.
-  /// Leave empty during local development — AnalyticsService becomes a no-op.
-  /// Set via --dart-define=POSTHOG_API_KEY=phc_... for staging/production builds.
+  // ── PostHog ───────────────────────────────────────────────────────────────
+  // No-op when empty — AnalyticsService silently disables itself.
   static const posthogApiKey = String.fromEnvironment(
     'POSTHOG_API_KEY',
     defaultValue: '',
   );
 
-  /// RevenueCat iOS API key (Apple App Store).
-  /// Obtain from RevenueCat dashboard → Project Settings → API Keys.
-  /// Set via --dart-define=REVENUECAT_API_KEY_IOS=appl_...
-  static const revenueCatApiKeyIos = String.fromEnvironment(
-    'REVENUECAT_API_KEY_IOS',
-    defaultValue: '',
-  );
+  // ── RevenueCat ────────────────────────────────────────────────────────────
+  // Dart-define wins at build time; dotenv provides the local dev fallback so
+  // you can test in-app purchases without passing --dart-define flags.
+  // Use your platform-specific PUBLIC SDK key (appl_... / goog_... / test_...).
+  // Never use the V2 secret key (sk_...) here — that is server-side only.
 
-  /// RevenueCat Android API key (Google Play Store).
-  /// Set via --dart-define=REVENUECAT_API_KEY_ANDROID=goog_...
-  static const revenueCatApiKeyAndroid = String.fromEnvironment(
-    'REVENUECAT_API_KEY_ANDROID',
-    defaultValue: '',
-  );
+  static String get revenueCatApiKeyIos {
+    const compileTime = String.fromEnvironment('REVENUECAT_API_KEY_IOS');
+    if (compileTime.isNotEmpty) return compileTime;
+    return dotenv.maybeGet('REVENUECAT_API_KEY_IOS') ?? '';
+  }
+
+  static String get revenueCatApiKeyAndroid {
+    const compileTime = String.fromEnvironment('REVENUECAT_API_KEY_ANDROID');
+    if (compileTime.isNotEmpty) return compileTime;
+    return dotenv.maybeGet('REVENUECAT_API_KEY_ANDROID') ?? '';
+  }
 }
