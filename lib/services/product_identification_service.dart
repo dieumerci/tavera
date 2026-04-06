@@ -167,7 +167,9 @@ class ProductIdentificationService {
         '?fields=product_name,brands,nutriments,serving_quantity,serving_size',
       );
       final response =
-          await http.get(uri).timeout(const Duration(seconds: 10));
+          // 15 s gives slow connections a fair chance; OPF is a community
+          // server and occasionally takes > 10 s on mobile networks.
+          await http.get(uri).timeout(const Duration(seconds: 15));
       if (response.statusCode != 200) return null;
 
       final body = json.decode(response.body) as Map<String, dynamic>;

@@ -73,8 +73,13 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
     if (!mounted) return;
 
     if (!result.resolved) {
-      // Stay on notFound so the user can try the label-scan fallback.
-      setState(() => _ui = _ScreenState.notFound);
+      // OPF didn't recognise this barcode — automatically trigger the AI label
+      // scan so the user gets a result without having to tap "Scan label"
+      // manually. We show a brief loading message while the camera opens.
+      // This handles the common case of regional products not in OPF.
+      AnalyticsService.track('barcode_not_found_auto_label_scan',
+          properties: {'barcode': raw});
+      await _onScanLabel();
       return;
     }
 
