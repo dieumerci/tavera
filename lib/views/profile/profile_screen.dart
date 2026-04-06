@@ -123,7 +123,12 @@ class ProfileScreen extends ConsumerWidget {
         automaticallyImplyLeading: false,
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
+        // Bottom padding accounts for the bottom nav bar height (~56 dp)
+        // plus device safe area so the Sign Out button is never clipped.
+        padding: EdgeInsets.fromLTRB(
+          20, 8, 20,
+          MediaQuery.of(context).padding.bottom + 80,
+        ),
         children: [
           // ── User card ──────────────────────────────────────────────
           Container(
@@ -313,6 +318,17 @@ class ProfileScreen extends ConsumerWidget {
                 ],
               ),
             ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // ── Legal ──────────────────────────────────────────────────
+          _SectionLabel('Legal'),
+          _Tile(
+            icon: Icons.article_outlined,
+            label: 'Terms & Privacy Policy',
+            value: '',
+            onTap: () => context.push('/terms'),
           ),
 
           const SizedBox(height: 16),

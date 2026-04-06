@@ -158,7 +158,7 @@ class _ChallengesScreenState extends ConsumerState<ChallengesScreen>
         backgroundColor: AppColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
           onPressed: () {
             HapticService.selection();
             context.pop();

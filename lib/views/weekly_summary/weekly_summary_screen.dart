@@ -3,12 +3,14 @@ import 'dart:math' as math;
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../controllers/auth_controller.dart';
 import '../../controllers/log_controller.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
+import '../../services/haptic_service.dart';
 
 // ─── WeeklySummaryScreen ──────────────────────────────────────────────────────
 //
@@ -31,10 +33,16 @@ class WeeklySummaryScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: AppColors.background,
-        elevation: 0,
         title: Text('Weekly Summary', style: AppTextStyles.titleMedium),
         centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+          tooltip: 'Back',
+          onPressed: () {
+            HapticService.selection();
+            context.pop();
+          },
+        ),
       ),
       body: weekAsync.when(
         data: (days) => _SummaryBody(
