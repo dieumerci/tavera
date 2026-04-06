@@ -214,6 +214,9 @@ class ProfileScreen extends ConsumerWidget {
           // Net Carbs toggle
           _NetCarbsTile(netCarbsMode: profile?.netCarbsMode ?? false),
 
+          // GLP-1 medication mode toggle
+          _Glp1ModeTile(glp1Mode: profile?.glp1Mode ?? false),
+
           const SizedBox(height: 24),
 
           // ── Subscription section ───────────────────────────────────
@@ -1031,6 +1034,68 @@ class _NetCarbsTile extends ConsumerWidget {
           ),
           Switch(
             value: netCarbsMode,
+            activeThumbColor: AppColors.accent,
+            activeTrackColor: AppColors.accentMuted,
+            onChanged: (v) => _toggle(v, ref),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── GLP-1 Mode Toggle ───────────────────────────────────────────────────────
+//
+// Activates GLP-1 medication mode for users on Ozempic, Wegovy, Mounjaro, etc.
+// When on:  calorie goal is displayed as goal × 0.8 (appetite suppression)
+//           protein target becomes 1.2 g/kg body weight (muscle preservation)
+// The stored calorie_goal column is never changed — this is a display modifier.
+
+class _Glp1ModeTile extends ConsumerWidget {
+  final bool glp1Mode;
+  const _Glp1ModeTile({required this.glp1Mode});
+
+  Future<void> _toggle(bool value, WidgetRef ref) async {
+    HapticService.selection();
+    final session = Supabase.instance.client.auth.currentSession;
+    if (session == null) return;
+    await Supabase.instance.client
+        .from('profiles')
+        .update({'glp1_mode': value})
+        .eq('id', session.user.id);
+    // userProfileProvider is a StreamProvider — Supabase Realtime will push
+    // the updated row automatically; no manual invalidation needed.
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          const Text('💉', style: TextStyle(fontSize: 18)),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('GLP-1 medication mode', style: AppTextStyles.bodyLarge),
+                const SizedBox(height: 2),
+                Text(
+                  'Adjusts calorie & protein targets for Ozempic, Wegovy, Mounjaro',
+                  style: AppTextStyles.caption
+                      .copyWith(color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            value: glp1Mode,
             activeThumbColor: AppColors.accent,
             activeTrackColor: AppColors.accentMuted,
             onChanged: (v) => _toggle(v, ref),

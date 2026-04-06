@@ -17,6 +17,16 @@ class UserProfile {
   /// Stored as `net_carbs_mode` in the profiles table.
   final bool netCarbsMode;
 
+  /// GLP-1 medication mode (Ozempic, Wegovy, Mounjaro, etc.).
+  ///
+  /// When active the app applies two clinical adjustments:
+  ///   • Effective calorie goal = calorieGoal × 0.8 (appetite suppression)
+  ///   • Protein target = weightKg × 1.2 g/day (muscle-loss prevention)
+  ///
+  /// The stored calorieGoal is never modified — this is a display-layer
+  /// modifier so the user's base goal is preserved if they toggle GLP-1 off.
+  final bool glp1Mode;
+
   // Body stats — all optional; used for BMR-based goal suggestions.
   final double? weightKg;
   final int? heightCm;
@@ -32,6 +42,7 @@ class UserProfile {
     this.tier = SubscriptionTier.free,
     this.onboardingCompleted = false,
     this.netCarbsMode = false,
+    this.glp1Mode = false,
     this.weightKg,
     this.heightCm,
     this.age,
@@ -39,6 +50,23 @@ class UserProfile {
   });
 
   bool get isPremium => tier == SubscriptionTier.premium;
+
+  // ── GLP-1 adjusted targets ────────────────────────────────────────────────
+
+  /// Effective daily calorie goal after applying GLP-1 appetite-suppression
+  /// adjustment (×0.8). Falls back to the raw calorieGoal when mode is off.
+  int get effectiveCalorieGoal =>
+      glp1Mode ? (calorieGoal * 0.8).round() : calorieGoal;
+
+  /// Daily protein target in grams.
+  ///
+  /// GLP-1 on + weight known  → 1.2 g/kg (clinical muscle-preservation guideline)
+  /// GLP-1 on + no weight     → 30% of effective calories ÷ 4 kcal/g (standard split)
+  /// GLP-1 off                → 30% of calorieGoal ÷ 4 kcal/g
+  double get effectiveProteinGoalG {
+    if (glp1Mode && weightKg != null) return weightKg! * 1.2;
+    return (effectiveCalorieGoal * 0.30 / 4).roundToDouble();
+  }
 
   /// Whether enough body stats have been entered to compute a BMR estimate.
   bool get canComputeBmr =>
@@ -71,6 +99,7 @@ class UserProfile {
         onboardingCompleted:
             (map['onboarding_completed'] as bool?) ?? false,
         netCarbsMode: (map['net_carbs_mode'] as bool?) ?? false,
+        glp1Mode: (map['glp1_mode'] as bool?) ?? false,
         weightKg: (map['weight_kg'] as num?)?.toDouble(),
         heightCm: map['height_cm'] as int?,
         age: map['age'] as int?,
@@ -91,6 +120,7 @@ class UserProfile {
         'subscription_tier': tier.name,
         'onboarding_completed': onboardingCompleted,
         'net_carbs_mode': netCarbsMode,
+        'glp1_mode': glp1Mode,
         'weight_kg': weightKg,
         'height_cm': heightCm,
         'age': age,
@@ -104,6 +134,7 @@ class UserProfile {
     SubscriptionTier? tier,
     bool? onboardingCompleted,
     bool? netCarbsMode,
+    bool? glp1Mode,
     double? weightKg,
     int? heightCm,
     int? age,
@@ -118,6 +149,7 @@ class UserProfile {
         tier: tier ?? this.tier,
         onboardingCompleted: onboardingCompleted ?? this.onboardingCompleted,
         netCarbsMode: netCarbsMode ?? this.netCarbsMode,
+        glp1Mode: glp1Mode ?? this.glp1Mode,
         weightKg: weightKg ?? this.weightKg,
         heightCm: heightCm ?? this.heightCm,
         age: age ?? this.age,
