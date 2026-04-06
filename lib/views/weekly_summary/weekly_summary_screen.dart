@@ -801,7 +801,7 @@ class _FeelingChart extends StatelessWidget {
                             final e = feeling[i].avgEnergy;
                             return e != null
                                 ? FlSpot(i.toDouble(), e)
-                                : const FlSpot.nullSpot(0);
+                                : FlSpot.nullSpot;
                           }),
                           isCurved: true,
                           color: AppColors.accent,
@@ -827,7 +827,7 @@ class _FeelingChart extends StatelessWidget {
                             final m = feeling[i].avgMood;
                             return m != null
                                 ? FlSpot(i.toDouble(), m)
-                                : const FlSpot.nullSpot(0);
+                                : FlSpot.nullSpot;
                           }),
                           isCurved: true,
                           color: const Color(0xFF64B5F6),
