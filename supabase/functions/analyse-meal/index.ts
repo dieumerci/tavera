@@ -14,7 +14,7 @@ const corsHeaders = {
 
 // Gemini 1.5 Flash: chosen for cost (~66× cheaper than GPT-4o) while
 // delivering comparable food-recognition accuracy for well-lit meal photos.
-const GEMINI_MODEL = "gemini-2.0-flash-002";
+const GEMINI_MODEL = "gemini-2.0-flash";
 
 const SYSTEM_PROMPT = `You are a precise nutrition analyst. When given a meal image, identify every visible food item and return accurate calorie and macro estimates.
 

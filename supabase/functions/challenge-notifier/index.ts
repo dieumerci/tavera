@@ -3,7 +3,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 // @ts-ignore
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
-const GEMINI_MODEL = "gemini-2.0-flash-002";
+const GEMINI_MODEL = "gemini-2.0-flash";
 
 // ─── challenge-notifier ───────────────────────────────────────────────────────
 //

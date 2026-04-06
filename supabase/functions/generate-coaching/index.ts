@@ -324,10 +324,12 @@ ${moodContext}`.trim();
   if (ratedMeals.length >= 7) finalPrompt += MOOD_CORRELATION_PROMPT_EXTENSION;
 
   // ── 6. Call Gemini ─────────────────────────────────────────────────────────
-  // gemini-2.0-flash-002 balances quality and cost for coaching text.
+  // gemini-2.0-flash is the stable alias (gemini-2.0-flash-002 was retired
+  // from the v1beta endpoint and returns 404; the unversioned alias always
+  // resolves to the latest stable -flash release).
   const rawContent = await _callGemini(
     geminiKey,
-    "gemini-2.0-flash-002",
+    "gemini-2.0-flash",
     finalPrompt + "\n\n" + contextText,
     { temperature: 0.7, maxOutputTokens: glp1Mode || ratedMeals.length >= 7 ? 800 : 600 }
   );

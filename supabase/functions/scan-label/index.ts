@@ -19,7 +19,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const GEMINI_MODEL = "gemini-2.0-flash-002";
+const GEMINI_MODEL = "gemini-2.0-flash";
 
 const SYSTEM_PROMPT = `You are a nutrition label reader. Extract the nutrition information exactly as printed on the label.
 
