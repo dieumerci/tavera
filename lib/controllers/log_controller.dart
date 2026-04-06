@@ -170,16 +170,28 @@ final historyLogsProvider =
 /// local calendar days, oldest first (index 0 = 6 days ago, index 6 = today).
 /// Days with no logs contribute 0.
 ///
-/// Waits for the Supabase auth session to be established before querying —
-/// the same pattern used by LogController — so this provider never resolves
-/// with an all-zeros result due to a cold-start race where currentUser is
-/// momentarily null while the session is being restored from storage.
+/// ⚠️  Uses `ref.watch(authStateProvider)` directly — NOT `.future`.
+///
+/// `StreamProvider.future` in Riverpod 2.x is a one-shot future that resolves
+/// with the FIRST stream emission and then stays frozen at that value forever.
+/// Supabase's `onAuthStateChange` always emits `AuthState(session: null)` first
+/// (while it reads secure storage), then a second event with the real session.
+/// Using `.future` therefore caches a null-session result and never re-runs —
+/// which is exactly why the 7-day trend was blank on cold start.
+///
+/// Watching the `StreamProvider` directly creates a live dependency: every new
+/// emission invalidates this provider and triggers a fresh DB query, so the
+/// chart appears as soon as the session is restored (typically < 300 ms).
 final weeklyCaloriesProvider = FutureProvider<List<int>>((ref) async {
-  final authState = await ref.watch(authStateProvider.future);
-  if (authState.session == null) return List.filled(7, 0);
+  final authAsync = ref.watch(authStateProvider);
+  final session = authAsync.valueOrNull?.session;
+  // No session yet (auth still loading or truly unauthenticated).
+  // Return zeros now; this provider will be re-run automatically when
+  // authAsync emits a new value (i.e., once the session is restored).
+  if (session == null) return List.filled(7, 0);
 
   final client = Supabase.instance.client;
-  final userId = authState.session!.user.id;
+  final userId = session.user.id;
 
   final today = DateTime.now();
   // Fetch 7-day window in one query: from 6 days ago (local midnight UTC) to
@@ -218,11 +230,14 @@ final weeklyCaloriesProvider = FutureProvider<List<int>>((ref) async {
 
 /// Current logging streak in days. 0 when today has no logs yet.
 final loggingStreakProvider = FutureProvider<int>((ref) async {
-  final authState = await ref.watch(authStateProvider.future);
-  if (authState.session == null) return 0;
+  // Same live-dependency pattern as weeklyCaloriesProvider — see its comment
+  // for a full explanation of why .future must NOT be used here.
+  final authAsync = ref.watch(authStateProvider);
+  final session = authAsync.valueOrNull?.session;
+  if (session == null) return 0;
 
   final client = Supabase.instance.client;
-  final userId = authState.session!.user.id;
+  final userId = session.user.id;
 
   final today = DateTime.now();
   final cutoff =
@@ -282,11 +297,13 @@ class DayStats {
 /// Returns daily stats for the last 7 local calendar days, oldest first.
 /// Days with no logs contribute a zero DayStats entry.
 final weeklyFullStatsProvider = FutureProvider<List<DayStats>>((ref) async {
-  final authState = await ref.watch(authStateProvider.future);
-  if (authState.session == null) return _emptyWeek();
+  // Same live-dependency pattern as weeklyCaloriesProvider — see its comment.
+  final authAsync = ref.watch(authStateProvider);
+  final session = authAsync.valueOrNull?.session;
+  if (session == null) return _emptyWeek();
 
   final client = Supabase.instance.client;
-  final userId = authState.session!.user.id;
+  final userId = session.user.id;
 
   final today = DateTime.now();
   final windowStart =

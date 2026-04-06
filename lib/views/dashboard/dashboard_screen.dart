@@ -40,6 +40,11 @@ class DashboardScreen extends ConsumerWidget {
     final activeFast = ref.watch(fastingControllerProvider).valueOrNull;
     final knownMeals = ref.watch(topKnownMealsProvider);
     final unreadInsights = ref.watch(unreadInsightCountProvider);
+    // Watch auth state directly so we can distinguish "auth still loading"
+    // from "genuinely no meals this week". weeklyCaloriesProvider returns
+    // AsyncData([0,0,0,0,0,0,0]) while auth is loading (not AsyncLoading),
+    // so we need this flag to keep showing the skeleton during that window.
+    final authLoading = ref.watch(authStateProvider).isLoading;
     // Watch the full async state so we can render a skeleton while loading
     // instead of silently hiding the card when auth hasn't resolved yet.
     final weeklyCaloriesAsync = ref.watch(weeklyCaloriesProvider);
@@ -196,43 +201,52 @@ class DashboardScreen extends ConsumerWidget {
             const SliverToBoxAdapter(child: SizedBox(height: 16)),
 
             // ── Weekly calorie trend ────────────────────────────────────────
-            // Always render the card placeholder so users see immediate
-            // feedback: skeleton while loading, chart once auth + data arrive.
+            // Show skeleton in three situations:
+            //   1. weeklyCaloriesProvider is in AsyncLoading (normal loading)
+            //   2. Auth is still loading — weeklyCaloriesProvider is in
+            //      AsyncData([0,0,...]) but those zeros are not real data
+            // Hide the card entirely only when auth is settled AND there are
+            // genuinely no calories for the week.
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: weeklyCaloriesAsync.when(
-                  loading: () => const _WeeklyTrendSkeleton(),
-                  error: (_, __) => const SizedBox.shrink(),
-                  data: (weeklyCalories) => weeklyCalories.any((v) => v > 0)
-                      ? _WeeklyTrendCard(
-                          calories: weeklyCalories,
-                          goal: calorieGoal,
-                        )
-                      : const SizedBox.shrink(),
-                ),
+                child: authLoading
+                    ? const _WeeklyTrendSkeleton()
+                    : weeklyCaloriesAsync.when(
+                        loading: () => const _WeeklyTrendSkeleton(),
+                        error: (_, __) => const SizedBox.shrink(),
+                        data: (weeklyCalories) => weeklyCalories.any((v) => v > 0)
+                            ? _WeeklyTrendCard(
+                                calories: weeklyCalories,
+                                goal: calorieGoal,
+                              )
+                            : const SizedBox.shrink(),
+                      ),
               ),
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 20)),
 
             // ── Phase 3: Calorie Banking ────────────────────────────────────
-            // Only shown when we have actual weekly data (any day logged).
+            // Hidden while auth is loading (zeros not yet meaningful) and when
+            // there are genuinely no calories logged this week.
             SliverToBoxAdapter(
-              child: weeklyCaloriesAsync.maybeWhen(
-                data: (weeklyCalories) {
-                  if (!weeklyCalories.any((v) => v > 0)) {
-                    return const SizedBox.shrink();
-                  }
-                  return Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-                    child: _CalorieBankCard(
-                      weeklyCalories: weeklyCalories,
-                      dailyGoal: calorieGoal,
-                    ),
-                  );
-                },
-                orElse: () => const SizedBox.shrink(),
-              ),
+              child: (!authLoading)
+                  ? weeklyCaloriesAsync.maybeWhen(
+                      data: (weeklyCalories) {
+                        if (!weeklyCalories.any((v) => v > 0)) {
+                          return const SizedBox.shrink();
+                        }
+                        return Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                          child: _CalorieBankCard(
+                            weeklyCalories: weeklyCalories,
+                            dailyGoal: calorieGoal,
+                          ),
+                        );
+                      },
+                      orElse: () => const SizedBox.shrink(),
+                    )
+                  : const SizedBox.shrink(),
             ),
 
             // ── Phase 3: Consistency streak ─────────────────────────────────
