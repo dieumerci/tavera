@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -22,8 +23,10 @@ class WeeklySummaryScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final weekAsync = ref.watch(weeklyFullStatsProvider);
     final streakAsync = ref.watch(loggingStreakProvider);
+    final feelingAsync = ref.watch(weeklyFeelingProvider);
     final profile = ref.watch(userProfileProvider).valueOrNull;
-    final goal = profile?.calorieGoal ?? 2000;
+    // Use effectiveCalorieGoal so GLP-1 mode is reflected in the summary.
+    final goal = profile?.effectiveCalorieGoal ?? 2000;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -38,6 +41,7 @@ class WeeklySummaryScreen extends ConsumerWidget {
           days: days,
           calorieGoal: goal,
           streak: streakAsync.valueOrNull ?? 0,
+          feeling: feelingAsync.valueOrNull,
         ),
         loading: () =>
             const Center(child: CircularProgressIndicator(color: AppColors.accent)),
@@ -54,11 +58,13 @@ class _SummaryBody extends StatelessWidget {
   final List<DayStats> days;
   final int calorieGoal;
   final int streak;
+  final List<DayFeeling>? feeling;
 
   const _SummaryBody({
     required this.days,
     required this.calorieGoal,
     required this.streak,
+    this.feeling,
   });
 
   @override
@@ -156,6 +162,13 @@ class _SummaryBody extends StatelessWidget {
             carbs: avgCarbs,
             fat: avgFat,
           ),
+          const SizedBox(height: 20),
+        ],
+
+        // ── How you felt ───────────────────────────────────────────────────
+        // Only shown when at least 3 days have feeling ratings this week.
+        if (feeling != null) ...[
+          _FeelingChart(feeling: feeling!),
         ],
       ],
     );
@@ -625,3 +638,227 @@ class _LegendDot extends StatelessWidget {
     );
   }
 }
+
+// ─── How you felt chart ───────────────────────────────────────────────────────
+//
+// Dual line chart (Energy + Mood) over the 7-day window. Uses FlSpot.nullSpot
+// for days with no ratings so the line has a gap rather than zeroing out —
+// a missing rating is visually distinct from a low score.
+// Hidden entirely when fewer than 3 days have any ratings this week.
+
+class _FeelingChart extends StatelessWidget {
+  final List<DayFeeling> feeling;
+  const _FeelingChart({required this.feeling});
+
+  @override
+  Widget build(BuildContext context) {
+    // Count days with at least one rating.
+    final ratedDays = feeling.where((d) => d.ratedMeals > 0).length;
+
+    // Section header always shown; content depends on data availability.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionHeader('How you felt'),
+        const SizedBox(height: 12),
+        if (ratedDays < 3)
+          // Teaser state — not enough data yet.
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Row(
+              children: [
+                const Text('⚡', style: TextStyle(fontSize: 22)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Rate your energy after meals to unlock your\npersonal mood–food pattern chart.',
+                    style: AppTextStyles.caption
+                        .copyWith(color: AppColors.textSecondary, height: 1.5),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          Container(
+            padding: const EdgeInsets.fromLTRB(12, 14, 12, 8),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Legend
+                Row(
+                  children: const [
+                    _LegendDot(color: AppColors.accent, label: 'Energy'),
+                    SizedBox(width: 16),
+                    _LegendDot(color: Color(0xFF64B5F6), label: 'Mood'),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: 100,
+                  child: LineChart(
+                    LineChartData(
+                      minY: 1,
+                      maxY: 5,
+                      clipData: const FlClipData.all(),
+                      gridData: FlGridData(
+                        show: true,
+                        drawVerticalLine: false,
+                        horizontalInterval: 1,
+                        getDrawingHorizontalLine: (_) => FlLine(
+                          color: AppColors.border.withValues(alpha: 0.5),
+                          strokeWidth: 1,
+                        ),
+                      ),
+                      borderData: FlBorderData(show: false),
+                      titlesData: FlTitlesData(
+                        show: true,
+                        bottomTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 20,
+                            getTitlesWidget: (value, meta) {
+                              final i = value.toInt();
+                              if (i < 0 || i >= 7) {
+                                return const SizedBox.shrink();
+                              }
+                              final d = feeling[i].date;
+                              final label = DateFormat('E').format(d)[0];
+                              final isToday = i == 6;
+                              return SideTitleWidget(
+                                meta: meta,
+                                child: Text(
+                                  label,
+                                  style: AppTextStyles.caption.copyWith(
+                                    fontSize: 10,
+                                    color: isToday
+                                        ? AppColors.accent
+                                        : AppColors.textTertiary,
+                                    fontWeight: isToday
+                                        ? FontWeight.w700
+                                        : FontWeight.w400,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        leftTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 18,
+                            interval: 2,
+                            getTitlesWidget: (value, meta) {
+                              if (value != 1 && value != 3 && value != 5) {
+                                return const SizedBox.shrink();
+                              }
+                              return Text(
+                                value.toInt().toString(),
+                                style: AppTextStyles.caption.copyWith(
+                                  fontSize: 9,
+                                  color: AppColors.textTertiary,
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        rightTitles: const AxisTitles(
+                            sideTitles: SideTitles(showTitles: false)),
+                        topTitles: const AxisTitles(
+                            sideTitles: SideTitles(showTitles: false)),
+                      ),
+                      lineTouchData: LineTouchData(
+                        touchTooltipData: LineTouchTooltipData(
+                          getTooltipColor: (_) => AppColors.card,
+                          getTooltipItems: (spots) => spots.map((s) {
+                            final label =
+                                s.barIndex == 0 ? 'Energy' : 'Mood';
+                            return LineTooltipItem(
+                              '$label ${s.y.toStringAsFixed(1)}/5',
+                              AppTextStyles.caption.copyWith(
+                                color: s.bar.color,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 11,
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                      lineBarsData: [
+                        // Energy line
+                        LineChartBarData(
+                          spots: List.generate(7, (i) {
+                            final e = feeling[i].avgEnergy;
+                            return e != null
+                                ? FlSpot(i.toDouble(), e)
+                                : const FlSpot.nullSpot(0);
+                          }),
+                          isCurved: true,
+                          color: AppColors.accent,
+                          barWidth: 2.5,
+                          isStrokeCapRound: true,
+                          dotData: FlDotData(
+                            show: true,
+                            getDotPainter: (spot, _, __, ___) =>
+                                FlDotCirclePainter(
+                              radius: 3,
+                              color: AppColors.accent,
+                              strokeWidth: 0,
+                            ),
+                          ),
+                          belowBarData: BarAreaData(
+                            show: true,
+                            color: AppColors.accent.withValues(alpha: 0.06),
+                          ),
+                        ),
+                        // Mood line
+                        LineChartBarData(
+                          spots: List.generate(7, (i) {
+                            final m = feeling[i].avgMood;
+                            return m != null
+                                ? FlSpot(i.toDouble(), m)
+                                : const FlSpot.nullSpot(0);
+                          }),
+                          isCurved: true,
+                          color: const Color(0xFF64B5F6),
+                          barWidth: 2.5,
+                          isStrokeCapRound: true,
+                          dotData: FlDotData(
+                            show: true,
+                            getDotPainter: (spot, _, __, ___) =>
+                                FlDotCirclePainter(
+                              radius: 3,
+                              color: const Color(0xFF64B5F6),
+                              strokeWidth: 0,
+                            ),
+                          ),
+                          belowBarData: BarAreaData(
+                            show: true,
+                            color: const Color(0xFF64B5F6).withValues(alpha: 0.05),
+                          ),
+                        ),
+                      ],
+                    ),
+                    duration: const Duration(milliseconds: 400),
+                    curve: Curves.easeOut,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        const SizedBox(height: 20),
+      ],
+    );
+  }
+}
+

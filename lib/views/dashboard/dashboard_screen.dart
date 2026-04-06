@@ -57,7 +57,9 @@ class DashboardScreen extends ConsumerWidget {
 
     final log = logAsync.valueOrNull;
     final profile = profileAsync.valueOrNull;
-    final calorieGoal = profile?.calorieGoal ?? 2000;
+    // Use effectiveCalorieGoal so GLP-1 mode (×0.8) is reflected everywhere.
+    final calorieGoal = profile?.effectiveCalorieGoal ?? 2000;
+    final glp1Mode = profile?.glp1Mode ?? false;
     final netCarbsMode = profile?.netCarbsMode ?? false;
     final displayCarbs = _netCarbs(log?.totalCarbs ?? 0, log?.totalFiber, netCarbsMode);
     final carbLabel = netCarbsMode ? 'Net Carbs' : 'Carbs';
@@ -136,7 +138,9 @@ class DashboardScreen extends ConsumerWidget {
                   consumed: log?.totalCalories ?? 0,
                   goal: calorieGoal,
                   protein: log?.totalProtein ?? 0,
-                  proteinGoal: _macroGoal(calorieGoal, 'protein'),
+                  // Use weight-based protein goal when GLP-1 mode is on.
+                  proteinGoal: profile?.effectiveProteinGoalG ??
+                      _macroGoal(calorieGoal, 'protein'),
                   carbs: displayCarbs,
                   carbGoal: _macroGoal(calorieGoal, 'carbs'),
                   carbLabel: carbLabel,
@@ -146,6 +150,15 @@ class DashboardScreen extends ConsumerWidget {
                 ),
               ),
             ),
+
+            // GLP-1 mode banner — shown above stat chips when mode is active.
+            if (glp1Mode)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                  child: _Glp1Banner(profile: profile),
+                ),
+              ),
 
             const SliverToBoxAdapter(child: SizedBox(height: 16)),
 
@@ -164,7 +177,10 @@ class DashboardScreen extends ConsumerWidget {
                       label: 'Calories',
                       value: '${log?.totalCalories ?? 0}',
                       unit: 'kcal',
-                      sub: '/ $calorieGoal goal',
+                      // Show adjusted goal in chip subtitle when GLP-1 is on.
+                      sub: glp1Mode
+                          ? '/ $calorieGoal kcal (GLP-1)'
+                          : '/ $calorieGoal goal',
                     ),
                     const SizedBox(width: 12),
                     _StatChip(
@@ -173,7 +189,8 @@ class DashboardScreen extends ConsumerWidget {
                       label: 'Protein',
                       value: (log?.totalProtein ?? 0).toStringAsFixed(0),
                       unit: 'g',
-                      sub: '/ ${_macroGoal(calorieGoal, 'protein').toStringAsFixed(0)}g goal',
+                      sub:
+                          '/ ${(profile?.effectiveProteinGoalG ?? _macroGoal(calorieGoal, 'protein')).toStringAsFixed(0)}g goal',
                     ),
                     const SizedBox(width: 12),
                     _StatChip(
@@ -423,6 +440,44 @@ class DashboardScreen extends ConsumerWidget {
   }
 }
 
+// ─── GLP-1 mode banner ───────────────────────────────────────────────────────
+//
+// Compact informational strip shown when GLP-1 mode is active. Explains the
+// two active adjustments so the user understands why their targets differ from
+// a standard calorie-goal setup. Tapping "Edit" navigates to Profile → Goals.
+
+class _Glp1Banner extends StatelessWidget {
+  final dynamic profile; // UserProfile?
+  const _Glp1Banner({this.profile});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A2E1A), // dark green tint
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.accent.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        children: [
+          const Text('💉', style: TextStyle(fontSize: 16)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'GLP-1 mode active — calorie goal ×0.8, protein priority',
+              style: AppTextStyles.caption.copyWith(
+                color: AppColors.accent,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ─── Weekly calorie trend ─────────────────────────────────────────────────────
 
 /// Dark-themed bar chart showing calorie intake for the last 7 days.
@@ -660,18 +715,19 @@ class _WeeklyTrendSkeleton extends StatelessWidget {
 
 // ─── Calorie Bank card ────────────────────────────────────────────────────────
 //
-// Shows weekly calorie budget vs. total consumed so users can see whether they
-// have "calories banked" (surplus budget) or are over for the week.
-//
 // Budget  = dailyGoal × 7
 // Spent   = sum of weeklyCalories (7 values, oldest → newest)
-// Banked  = Budget − Spent  (positive = under budget, negative = over)
+// Banked  = Budget − Spent
 //
-// The progress bar fills from left to right as calories are consumed.
-// It turns red only when the user has exceeded 100 % of the weekly budget.
+// Smart behaviours:
+//   • Under-eating warning: shown when bank > 20 % of budget (≥ Monday, to
+//     avoid false-alarming on Sunday night before any logging happens).
+//   • Week-end celebration: shown once per session on Sunday when the user
+//     finished within ±5 % of the weekly budget. A StatefulWidget bool
+//     flag prevents it from firing on every rebuild.
 
-class _CalorieBankCard extends StatelessWidget {
-  final List<int> weeklyCalories; // 7 values
+class _CalorieBankCard extends StatefulWidget {
+  final List<int> weeklyCalories;
   final int dailyGoal;
 
   const _CalorieBankCard({
@@ -680,71 +736,166 @@ class _CalorieBankCard extends StatelessWidget {
   });
 
   @override
+  State<_CalorieBankCard> createState() => _CalorieBankCardState();
+}
+
+class _CalorieBankCardState extends State<_CalorieBankCard> {
+  bool _celebrationShown = false;
+
+  @override
+  void didUpdateWidget(_CalorieBankCard old) {
+    super.didUpdateWidget(old);
+    _maybeCelebrate();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // Use post-frame so context is available for SnackBar.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeCelebrate());
+  }
+
+  void _maybeCelebrate() {
+    if (_celebrationShown) return;
+    final budget = widget.dailyGoal * 7;
+    if (budget <= 0) return;
+    final spent =
+        widget.weeklyCalories.fold<int>(0, (s, v) => s + v);
+    final deviation = (spent - budget).abs() / budget;
+    final isSunday = DateTime.now().weekday == DateTime.sunday;
+    // Celebrate only on Sunday when within ±5 % of the weekly budget.
+    if (isSunday && deviation <= 0.05 && spent > 0) {
+      _celebrationShown = true;
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: AppColors.surface,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12)),
+          content: Row(
+            children: [
+              const Text('🎉', style: TextStyle(fontSize: 20)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Perfect week! You hit your calorie budget within 5%. That\'s genuine consistency.',
+                  style: AppTextStyles.caption
+                      .copyWith(color: AppColors.textPrimary),
+                ),
+              ),
+            ],
+          ),
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final budget = dailyGoal * 7;
-    final spent = weeklyCalories.fold<int>(0, (s, v) => s + v);
+    final budget = widget.dailyGoal * 7;
+    final spent =
+        widget.weeklyCalories.fold<int>(0, (s, v) => s + v);
     final banked = budget - spent;
     final ratio = budget > 0 ? (spent / budget).clamp(0.0, 1.0) : 0.0;
     final isOver = spent > budget;
     final barColor = isOver ? AppColors.danger : AppColors.accent;
     final bankedLabel = isOver
-        ? '${(-banked).toString()} kcal over'
-        : '${banked.toString()} kcal banked';
+        ? '${(-banked)} kcal over'
+        : '${banked} kcal banked';
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    // Under-eating warning: shown when bank > 20 % of budget AND at least
+    // Monday (day ≥ 2) so we don't warn on a fresh Sunday before logging.
+    final underEating = !isOver &&
+        budget > 0 &&
+        banked / budget > 0.20 &&
+        DateTime.now().weekday >= DateTime.monday + 1;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Weekly budget', style: AppTextStyles.labelLarge),
-              Text(
-                bankedLabel,
-                style: AppTextStyles.caption.copyWith(
-                  color: isOver ? AppColors.danger : AppColors.accent,
-                  fontWeight: FontWeight.w600,
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Weekly budget', style: AppTextStyles.labelLarge),
+                  Text(
+                    bankedLabel,
+                    style: AppTextStyles.caption.copyWith(
+                      color: isOver ? AppColors.danger : AppColors.accent,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: LinearProgressIndicator(
+                  value: ratio,
+                  minHeight: 8,
+                  backgroundColor: AppColors.card,
+                  valueColor: AlwaysStoppedAnimation<Color>(barColor),
                 ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '$spent kcal consumed',
+                    style: AppTextStyles.caption
+                        .copyWith(color: AppColors.textSecondary),
+                  ),
+                  Text(
+                    '$budget kcal budget',
+                    style: AppTextStyles.caption
+                        .copyWith(color: AppColors.textSecondary),
+                  ),
+                ],
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          // Progress bar
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: LinearProgressIndicator(
-              value: ratio,
-              minHeight: 8,
-              backgroundColor: AppColors.card,
-              valueColor: AlwaysStoppedAnimation<Color>(barColor),
+        ),
+        // Under-eating nudge banner — appears below the card, not inside it.
+        if (underEating) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFF2A2000),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                  color: const Color(0xFFFFF176).withValues(alpha: 0.35)),
+            ),
+            child: Row(
+              children: [
+                const Text('⚠️', style: TextStyle(fontSize: 15)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'You\'re well under budget — make sure you\'re eating enough. Low intake can slow progress.',
+                    style: AppTextStyles.caption.copyWith(
+                      color: const Color(0xFFFFF176),
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                '$spent kcal consumed',
-                style: AppTextStyles.caption.copyWith(
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              Text(
-                '$budget kcal budget',
-                style: AppTextStyles.caption.copyWith(
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ],
-          ),
         ],
-      ),
+      ],
     );
   }
 }

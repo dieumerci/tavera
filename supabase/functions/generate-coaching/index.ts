@@ -32,7 +32,7 @@ Return ONLY a valid JSON array — no markdown fences, no extra text.
 
 Each insight object:
 {
-  "category": "calories" | "macros" | "consistency" | "hydration" | "general",
+  "category": "calories" | "macros" | "consistency" | "hydration" | "general" | "glp1" | "mood_correlation",
   "headline": "string (≤ 80 chars, specific and actionable)",
   "body": "string (≤ 250 chars, warm encouraging tone, concrete advice)"
 }
@@ -43,6 +43,33 @@ Rules:
 - Tone: supportive coach, not a lecture
 - Focus on patterns and trends, not single days
 - If data is sparse (< 4 log days), acknowledge it and give gentle encouragement`;
+
+// Extra system instructions appended when GLP-1 mode is active.
+const GLP1_PROMPT_EXTENSION = `
+
+IMPORTANT — This user is on a GLP-1 medication (Ozempic, Wegovy, Mounjaro, or similar).
+Apply the following rules on top of the standard coaching guidelines:
+
+1. Protein is the #1 priority. GLP-1 suppresses appetite and accelerates weight loss, which risks
+   muscle loss if protein is insufficient. Flag any day where protein appears low relative to the
+   goal. Use the "glp1" category for at least one insight.
+2. Calorie goal has already been adjusted by the app (×0.8). Do NOT suggest the user eat less than
+   the stated calorie goal; under-eating on GLP-1 compounds muscle loss risk.
+3. If protein was below target on 3+ days, generate a "glp1" insight titled something like
+   "Protect your muscle while on GLP-1" with specific food suggestions.
+4. Acknowledge the medication's appetite effects warmly — low calorie days may be intentional and
+   should not be framed as failures.
+5. Never mention specific medication brand names in the generated text — use "GLP-1 medication" instead.`;
+
+// Extra instructions appended when ≥7 mood/energy ratings are available.
+const MOOD_CORRELATION_PROMPT_EXTENSION = `
+
+MOOD & ENERGY DATA — The user has been rating their energy and mood after meals on a 1–5 scale
+(1 = very low, 5 = great). Their recent ratings are shown below alongside the meal nutrition.
+Use this data to identify patterns: do high-carb meals correlate with lower energy? Do
+protein-rich breakfasts link to better mood? Generate one "mood_correlation" insight that
+names a specific pattern you can see in the data, using warm and non-judgmental language.
+Only generate this insight if you can clearly identify a pattern — do not speculate.`;
 
 interface MealLogSummary {
   date: string;
@@ -185,18 +212,45 @@ async function generateInsightsForUser(supabase: any, geminiKey: string, userId:
 
   if (logsError) throw new Error(logsError.message);
 
-  // ── 2. Fetch user's profile ────────────────────────────────────────────────
+  // ── 2. Fetch user's profile (including GLP-1 fields) ─────────────────────
   const { data: profile } = await supabase
     .from("profiles")
-    .select("calorie_goal, name, net_carbs_mode")
+    .select("calorie_goal, name, net_carbs_mode, glp1_mode, weight_kg")
     .eq("id", userId)
     .single();
 
   const calorieGoal  = profile?.calorie_goal  ?? 2000;
   const userName     = profile?.name           ?? "there";
   const netCarbsMode = profile?.net_carbs_mode ?? false;
+  const glp1Mode     = profile?.glp1_mode      ?? false;
+  const weightKg     = profile?.weight_kg      ?? null;
 
-  // ── 3. Build daily summary ─────────────────────────────────────────────────
+  // Effective calorie goal shown in the prompt should match what the app
+  // displays (×0.8 when GLP-1 mode is on, stored goal otherwise).
+  const effectiveCalorieGoal = glp1Mode ? Math.round(calorieGoal * 0.8) : calorieGoal;
+  // Protein target: weight-based when GLP-1 on + weight known, else 30% of kcal ÷ 4.
+  const proteinTargetG = glp1Mode && weightKg
+    ? Math.round(weightKg * 1.2)
+    : Math.round(effectiveCalorieGoal * 0.30 / 4);
+
+  // ── 3. Fetch mood/energy feeling data (last 14 days) ──────────────────────
+  // We look back 14 days from the end of the week window to give the
+  // correlation engine enough data even when the current week is early.
+  const feelingWindowStart = new Date(weekStart);
+  feelingWindowStart.setDate(feelingWindowStart.getDate() - 7); // 14-day lookback
+  const { data: feelingLogs } = await supabase
+    .from("meal_logs")
+    .select("logged_at, total_calories, total_protein, total_carbs, feeling")
+    .eq("user_id", userId)
+    .gte("logged_at", feelingWindowStart.toISOString().split("T")[0])
+    .not("feeling", "is", null)
+    .order("logged_at");
+
+  const ratedMeals = (feelingLogs ?? []).filter(
+    (l: { feeling: Record<string, number> | null }) => l.feeling && Object.keys(l.feeling).length > 0
+  );
+
+  // ── 4. Build daily summary ─────────────────────────────────────────────────
   const dailyMap = new Map<string, MealLogSummary>();
   for (const log of logs ?? []) {
     const date = log.logged_at.split("T")[0];
@@ -227,7 +281,7 @@ async function generateInsightsForUser(supabase: any, geminiKey: string, userId:
     ? Math.round(dailySummaries.reduce((s, d) => s + d.totalCalories, 0) / daysLogged)
     : 0;
 
-  // ── 4. Compose the prompt context ──────────────────────────────────────────
+  // ── 5. Compose the prompt context ──────────────────────────────────────────
   const carbLabel  = netCarbsMode ? "Net C" : "C";
   const summaryText = dailySummaries.map((d) => {
     const carbValue = netCarbsMode
@@ -236,30 +290,51 @@ async function generateInsightsForUser(supabase: any, geminiKey: string, userId:
     return `${d.date}: ${d.totalCalories} kcal, P:${d.totalProtein?.toFixed(0) ?? "?"}g ${carbLabel}:${carbValue?.toFixed(0) ?? "?"}g F:${d.totalFat?.toFixed(0) ?? "?"}g (${d.mealCount} meals)`;
   }).join("\n");
 
+  // GLP-1 extra context block.
+  const glp1Context = glp1Mode ? `
+GLP-1 mode: ACTIVE
+Effective calorie goal (×0.8 adjustment): ${effectiveCalorieGoal} kcal/day
+Protein target: ${proteinTargetG}g/day${weightKg ? ` (1.2 g/kg × ${weightKg}kg body weight)` : " (30% of effective kcal)"}
+` : "";
+
+  // Mood/energy correlation context block — only when ≥7 rated meals exist.
+  const moodContext = ratedMeals.length >= 7 ? `
+Mood & energy ratings (last 14 days, ${ratedMeals.length} rated meals):
+${ratedMeals.map((l: { logged_at: string; total_calories: number; total_protein: number | null; total_carbs: number | null; feeling: Record<string, number> }) =>
+  `  ${l.logged_at.split("T")[0]} — ${l.total_calories} kcal, P:${l.total_protein?.toFixed(0) ?? "?"}g, C:${l.total_carbs?.toFixed(0) ?? "?"}g → energy:${l.feeling?.energy ?? "?"}/5 mood:${l.feeling?.mood ?? "?"}/5`
+).join("\n")}
+` : "";
+
   const contextText = `
 User: ${userName}
 Week of: ${weekStart}
-Calorie goal: ${calorieGoal} kcal/day
+Calorie goal: ${effectiveCalorieGoal} kcal/day
+Protein target: ${proteinTargetG}g/day
 Carb display: ${netCarbsMode ? "net carbs (total carbs minus dietary fibre)" : "total carbs"}
 Days with logs: ${daysLogged}/7
 Average daily calories: ${avgCalories} kcal
-
+${glp1Context}
 Daily breakdown:
 ${summaryText || "(no logs this week)"}
-`.trim();
+${moodContext}`.trim();
 
-  // ── 5. Call Gemini ─────────────────────────────────────────────────────────
+  // Build the final prompt by appending mode-specific instruction extensions.
+  let finalPrompt = INSIGHT_PROMPT;
+  if (glp1Mode) finalPrompt += GLP1_PROMPT_EXTENSION;
+  if (ratedMeals.length >= 7) finalPrompt += MOOD_CORRELATION_PROMPT_EXTENSION;
+
+  // ── 6. Call Gemini ─────────────────────────────────────────────────────────
   // gemini-2.0-flash-002 balances quality and cost for coaching text.
   const rawContent = await _callGemini(
     geminiKey,
     "gemini-2.0-flash-002",
-    INSIGHT_PROMPT + "\n\n" + contextText,
-    { temperature: 0.7, maxOutputTokens: 600 }
+    finalPrompt + "\n\n" + contextText,
+    { temperature: 0.7, maxOutputTokens: glp1Mode || ratedMeals.length >= 7 ? 800 : 600 }
   );
   const insightArray = JSON.parse(_cleanJson(rawContent));
   if (!Array.isArray(insightArray)) throw new Error("Gemini response was not a JSON array");
 
-  // ── 6. Upsert insights ─────────────────────────────────────────────────────
+  // ── 7. Upsert insights ─────────────────────────────────────────────────────
   const rows = insightArray.map((i: { category: string; headline: string; body: string }) => ({
     user_id:    userId,
     week_start: weekStart,
