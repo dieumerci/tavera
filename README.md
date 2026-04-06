@@ -6,6 +6,13 @@ Tavera is a cross-platform mobile application that uses computer vision to estim
 
 ---
 
+> **Test account (premium — all features unlocked)**
+> Email: `preview@tavera.app`  Password: `TaveraPreview2024!`
+> Bypasses the 3-meal/day free cap and all premium feature gates.
+> Scoped to the dev/staging Supabase project — do not use in production.
+
+---
+
 ## Current State
 
 **Status:** Phase 1 ✅ Complete · Phase 2 ✅ Complete · Phase 3 🔄 In Progress
