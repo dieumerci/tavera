@@ -358,6 +358,96 @@ final weeklyFullStatsProvider = FutureProvider<List<DayStats>>((ref) async {
   });
 });
 
+// ── Weekly feeling data ──────────────────────────────────────────────────────
+//
+// Returns daily average energy and mood ratings for the last 7 local calendar
+// days. Days with no ratings have null values — rendered as gaps in the chart
+// so the absence of a rating is visually distinct from a low rating of 1.
+
+class DayFeeling {
+  final DateTime date;
+  final double? avgEnergy; // 1–5, null when no ratings that day
+  final double? avgMood; // 1–5, null when no ratings that day
+  final int ratedMeals;
+
+  const DayFeeling({
+    required this.date,
+    required this.avgEnergy,
+    required this.avgMood,
+    required this.ratedMeals,
+  });
+}
+
+final weeklyFeelingProvider = FutureProvider<List<DayFeeling>>((ref) async {
+  final authAsync = ref.watch(authStateProvider);
+  final session = authAsync.valueOrNull?.session;
+  if (session == null) return _emptyFeelingWeek();
+
+  final client = Supabase.instance.client;
+  final userId = session.user.id;
+
+  final today = DateTime.now();
+  final windowStart = DateTime(today.year, today.month, today.day - 6).toUtc();
+  final windowEnd = DateTime(today.year, today.month, today.day + 1).toUtc();
+
+  // Only fetch rows that have a non-null feeling column.
+  final rows = await client
+      .from('meal_logs')
+      .select('logged_at, feeling')
+      .eq('user_id', userId)
+      .gte('logged_at', windowStart.toIso8601String())
+      .lt('logged_at', windowEnd.toIso8601String())
+      .not('feeling', 'is', null);
+
+  // Bucket energy/mood sums by local calendar day.
+  final Map<String, List<int>> energyByDay = {};
+  final Map<String, List<int>> moodByDay = {};
+
+  for (final row in (rows as List<dynamic>)) {
+    final loggedAt = DateTime.parse(row['logged_at'] as String).toLocal();
+    final key =
+        '${loggedAt.year}-${loggedAt.month.toString().padLeft(2, '0')}-${loggedAt.day.toString().padLeft(2, '0')}';
+    final feeling = row['feeling'] as Map<String, dynamic>?;
+    if (feeling == null) continue;
+    final energy = (feeling['energy'] as num?)?.toInt();
+    final mood = (feeling['mood'] as num?)?.toInt();
+    if (energy != null) (energyByDay[key] ??= []).add(energy);
+    if (mood != null) (moodByDay[key] ??= []).add(mood);
+  }
+
+  return List.generate(7, (i) {
+    final d = DateTime(today.year, today.month, today.day - (6 - i));
+    final key =
+        '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    final energyList = energyByDay[key];
+    final moodList = moodByDay[key];
+    final count = (energyList?.length ?? 0) + (moodList?.length ?? 0);
+    return DayFeeling(
+      date: d,
+      avgEnergy: energyList != null && energyList.isNotEmpty
+          ? energyList.reduce((a, b) => a + b) / energyList.length
+          : null,
+      avgMood: moodList != null && moodList.isNotEmpty
+          ? moodList.reduce((a, b) => a + b) / moodList.length
+          : null,
+      ratedMeals: count,
+    );
+  });
+});
+
+List<DayFeeling> _emptyFeelingWeek() {
+  final today = DateTime.now();
+  return List.generate(
+    7,
+    (i) => DayFeeling(
+      date: DateTime(today.year, today.month, today.day - (6 - i)),
+      avgEnergy: null,
+      avgMood: null,
+      ratedMeals: 0,
+    ),
+  );
+}
+
 List<DayStats> _emptyWeek() {
   final today = DateTime.now();
   return List.generate(
