@@ -418,7 +418,7 @@ class _AuthView extends StatelessWidget {
               const TaveraLogo(size: 52),
               const SizedBox(width: 14),
               Text(
-                'tavera.',
+                'Tavera.',
                 style: AppTextStyles.displayLarge.copyWith(
                   color: AppColors.accent,
                   letterSpacing: -1,

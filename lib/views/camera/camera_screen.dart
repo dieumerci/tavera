@@ -544,7 +544,7 @@ class _CameraRationaleScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 28),
             Text(
-              'tavera.',
+              'Tavera.',
               style: AppTextStyles.displayLarge.copyWith(
                 color: AppColors.accent,
               ),

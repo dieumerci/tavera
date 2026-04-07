@@ -75,7 +75,12 @@ class CoachingController extends AsyncNotifier<List<CoachingInsight>> {
 
     state = const AsyncValue.loading();
     try {
-      // supabase_flutter 2.x refreshes the JWT automatically; no manual refresh needed.
+      // Force a session refresh before invoking the function. Without this,
+      // a stale access token causes the edge function to return 401 Invalid JWT
+      // even when the user is authenticated — Supabase's auto-refresh only fires
+      // on API calls that go through the PostgREST client, not functions.invoke.
+      await client.auth.refreshSession();
+
       await client.functions.invoke(
         'generate-coaching',
         body: {'user_id': userId, 'week_start': weekStartStr},
